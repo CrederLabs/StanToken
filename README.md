@@ -13,6 +13,11 @@ The total supply of the token is 1,000,000,000, and each token is divisible up t
 ## Setup
 
 ### ABI
-- StanToken.abi.json(https://github.com/CrederLabs/StanToken/blob/efd020fb69e73b703bbf6ff262ec8296cddd6775/ABI/StanToken.abi.json)
+- StanToken.abi.json: https://github.com/CrederLabs/StanToken/blob/efd020fb69e73b703bbf6ff262ec8296cddd6775/ABI/StanToken.abi.json
 
 ## Testing
+
+Run tests:
+```
+yarn test
+```
