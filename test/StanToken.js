@@ -1,11 +1,11 @@
 const {
     time,
     loadFixture,
-  } = require("@nomicfoundation/hardhat-toolbox/network-helpers");
-  const { anyValue } = require("@nomicfoundation/hardhat-chai-matchers/withArgs");
-  const { expect } = require("chai");
-  
-  describe("StanToken", function () {
+} = require("@nomicfoundation/hardhat-toolbox/network-helpers");
+const { anyValue } = require("@nomicfoundation/hardhat-chai-matchers/withArgs");
+const { expect } = require("chai");
+
+describe("StanToken", function () {
     // We define a fixture to reuse the same setup in every test.
     // We use loadFixture to run this setup once, snapshot that state,
     // and reset Hardhat Network to that snapshot in every test.
@@ -17,12 +17,12 @@ const {
         // const unlockTime = (await time.latest()) + ONE_YEAR_IN_SECS;
 
         // Contracts are deployed using the first signer/account by default
-        const [owner, otherAccount] = await ethers.getSigners();
+        const [owner, otherAccount, userA, userB, userC] = await ethers.getSigners();
 
         const StanToken = await ethers.getContractFactory("StanToken");
         const stanToken = await StanToken.deploy();
 
-        return { stanToken, owner, otherAccount };
+        return { stanToken, owner, otherAccount, userA, userB, userC };
     }
 
     describe("Deployment", function () {
@@ -78,114 +78,141 @@ const {
     });
 
     // Vesting tests
-    
-    
-    
-  
+    describe("Vesting", function () {
 
+        // userA 에게 1000 STAN, userB 에게 2000 STAN, userC 에게 3000, 4000 STAN을 lock
+        it("Should lock the tokens for the users", async function () {
+            const { stanToken, owner, userA, userB, userC } = await loadFixture(deployFixture);
 
+            // approve
+            stanToken.approve(owner.address, "10000000000000000000000");
 
+            let timestamp = await time.latest() + 1000;
 
+            await stanToken.lock(userA.address, "1000000000000000000000", timestamp);
+            await stanToken.lock(userB.address, "2000000000000000000000", timestamp);
+            await stanToken.lock(userC.address, "3000000000000000000000", timestamp);
+            await stanToken.lock(userC.address, "4000000000000000000000", timestamp);
 
+            // lockCount
+            expect(await stanToken.lockCount(userA.address)).to.equal(1);
+            expect(await stanToken.lockCount(userB.address)).to.equal(1);
+            expect(await stanToken.lockCount(userC.address)).to.equal(2);
 
+            // lockState
+            expect(await stanToken.lockState(userA.address, 0)).to.deep.equal([timestamp, "1000000000000000000000"]);
+            
+            // lockStates
+            expect(await stanToken.lockStates(userC.address)).to.deep.equal([[timestamp, "3000000000000000000000"], [timestamp, "4000000000000000000000"]]);
+            
+            expect(await stanToken.balanceOf(userA.address)).to.equal(0);
+            expect(await stanToken.balanceOf(userB.address)).to.equal(0);
+            expect(await stanToken.balanceOf(userC.address)).to.equal(0);
+            
+            expect(await stanToken.lockedBalanceOf(userA.address)).to.equal("1000000000000000000000");
+            expect(await stanToken.lockedBalanceOf(userB.address)).to.equal("2000000000000000000000");
+            expect(await stanToken.lockedBalanceOf(userC.address)).to.equal("7000000000000000000000");
 
-    // describe("Deployment", function () {
-    //   it("Should set the right unlockTime", async function () {
-    //     const { lock, unlockTime } = await loadFixture(deployOneYearLockFixture);
-  
-    //     expect(await lock.unlockTime()).to.equal(unlockTime);
-    //   });
-  
-    //   it("Should set the right owner", async function () {
-    //     const { lock, owner } = await loadFixture(deployOneYearLockFixture);
-  
-    //     expect(await lock.owner()).to.equal(owner.address);
-    //   });
-  
-    //   it("Should receive and store the funds to lock", async function () {
-    //     const { lock, lockedAmount } = await loadFixture(
-    //       deployOneYearLockFixture
-    //     );
-  
-    //     expect(await ethers.provider.getBalance(lock.target)).to.equal(
-    //       lockedAmount
-    //     );
-    //   });
-  
-    //   it("Should fail if the unlockTime is not in the future", async function () {
-    //     // We don't use the fixture here because we want a different deployment
-    //     const latestTime = await time.latest();
-    //     const Lock = await ethers.getContractFactory("Lock");
-    //     await expect(Lock.deploy(latestTime, { value: 1 })).to.be.revertedWith(
-    //       "Unlock time should be in the future"
-    //     );
-    //   });
-    // });
-  
-    // describe("Withdrawals", function () {
-    //   describe("Validations", function () {
-    //     it("Should revert with the right error if called too soon", async function () {
-    //       const { lock } = await loadFixture(deployOneYearLockFixture);
-  
-    //       await expect(lock.withdraw()).to.be.revertedWith(
-    //         "You can't withdraw yet"
-    //       );
-    //     });
-  
-    //     it("Should revert with the right error if called from another account", async function () {
-    //       const { lock, unlockTime, otherAccount } = await loadFixture(
-    //         deployOneYearLockFixture
-    //       );
-  
-    //       // We can increase the time in Hardhat Network
-    //       await time.increaseTo(unlockTime);
-  
-    //       // We use lock.connect() to send a transaction from another account
-    //       await expect(lock.connect(otherAccount).withdraw()).to.be.revertedWith(
-    //         "You aren't the owner"
-    //       );
-    //     });
-  
-    //     it("Shouldn't fail if the unlockTime has arrived and the owner calls it", async function () {
-    //       const { lock, unlockTime } = await loadFixture(
-    //         deployOneYearLockFixture
-    //       );
-  
-    //       // Transactions are sent using the first signer by default
-    //       await time.increaseTo(unlockTime);
-  
-    //       await expect(lock.withdraw()).not.to.be.reverted;
-    //     });
-    //   });
-  
-    //   describe("Events", function () {
-    //     it("Should emit an event on withdrawals", async function () {
-    //       const { lock, unlockTime, lockedAmount } = await loadFixture(
-    //         deployOneYearLockFixture
-    //       );
-  
-    //       await time.increaseTo(unlockTime);
-  
-    //       await expect(lock.withdraw())
-    //         .to.emit(lock, "Withdrawal")
-    //         .withArgs(lockedAmount, anyValue); // We accept any value as `when` arg
-    //     });
-    //   });
-  
-    //   describe("Transfers", function () {
-    //     it("Should transfer the funds to the owner", async function () {
-    //       const { lock, unlockTime, lockedAmount, owner } = await loadFixture(
-    //         deployOneYearLockFixture
-    //       );
-  
-    //       await time.increaseTo(unlockTime);
-  
-    //       await expect(lock.withdraw()).to.changeEtherBalances(
-    //         [owner, lock],
-    //         [lockedAmount, -lockedAmount]
-    //       );
-    //     });
-    //   });
-    // });
-  });
+            // stanToken Contract balanceOf
+            expect(await stanToken.balanceOf(stanToken.target)).to.equal("10000000000000000000000");
+        });
+
+        // userA 에게 1000 STAN, userB 에게 2000 STAN, userC 에게 3000, 4000 STAN을 lock.
+        // 그리고 userA 는 6개월 후 1000 STAN release
+        // userB 는 12개월 후 2000 STAN release
+        // userC 는 18개월 후 3000 STAN release
+        // userC 는 24개월 후 4000 STAN release
+        it("Should release the locked tokens for the users", async function () {
+            const { stanToken, owner, userA, userB, userC } = await loadFixture(deployFixture);
+
+            // approve
+            stanToken.approve(owner.address, "10000000000000000000000");
+
+            let currentTimestamp = await time.latest();
+
+            await stanToken.lock(userA.address, "1000000000000000000000", currentTimestamp + 60 * 60 * 24 * 30 * 6);
+            await stanToken.lockAfter(userB.address, "2000000000000000000000", 60 * 60 * 24 * 30 * 12);
+            await stanToken.lock(userC.address, "3000000000000000000000", currentTimestamp + 60 * 60 * 24 * 30 * 18);
+            await stanToken.lockAfter(userC.address, "4000000000000000000000", 60 * 60 * 24 * 30 * 24);
+
+            // availableReleaseLock
+            expect(await stanToken.estimateAmountToReleaseLock(userA.address)).to.equal("0");
+
+            await time.increase(60 * 60 * 24 * 30 * 6);
+
+            expect(await stanToken.estimateAmountToReleaseLock(userA.address)).to.equal("1000000000000000000000");
+
+            await stanToken.release(userA.address);
+
+            await time.increase(60 * 60 * 24 * 30 * 12);
+            await stanToken.release(userB.address);
+
+            await time.increase(60 * 60 * 24 * 30 * 18);
+            await stanToken.release(userC.address);
+
+            expect(await stanToken.balanceOf(userC.address)).to.equal("3000000000000000000000");
+            expect(await stanToken.lockedBalanceOf(userC.address)).to.equal("4000000000000000000000");
+
+            await time.increase(60 * 60 * 24 * 30 * 24);
+            await stanToken.release(userC.address);
+
+            expect(await stanToken.balanceOf(userA.address)).to.equal("1000000000000000000000");
+            expect(await stanToken.balanceOf(userB.address)).to.equal("2000000000000000000000");
+            expect(await stanToken.balanceOf(userC.address)).to.equal("7000000000000000000000");
+
+            expect(await stanToken.lockedBalanceOf(userA.address)).to.equal(0);
+            expect(await stanToken.lockedBalanceOf(userB.address)).to.equal(0);
+            expect(await stanToken.lockedBalanceOf(userC.address)).to.equal(0);
+
+            // stanToken Contract balanceOf
+            expect(await stanToken.balanceOf(stanToken.target)).to.equal(0);
+        });
+
+        // cancelLock test
+        it("Should cancel the locked tokens for the users", async function () {
+            const { stanToken, owner, userA, userB, userC } = await loadFixture(deployFixture);
+
+            // approve
+            stanToken.approve(owner.address, "10000000000000000000000");
+
+            let currentTimestamp = await time.latest();
+
+            await stanToken.lock(userA.address, "1000000000000000000000", currentTimestamp + 60 * 60 * 24 * 30 * 6);
+            await stanToken.lock(userB.address, "2000000000000000000000", currentTimestamp + 60 * 60 * 24 * 30 * 12);
+            await stanToken.lock(userC.address, "3000000000000000000000", currentTimestamp + 60 * 60 * 24 * 30 * 18);
+            await stanToken.lock(userC.address, "4000000000000000000000", currentTimestamp + 60 * 60 * 24 * 30 * 24);
+
+            await time.increase(60 * 60 * 24 * 30 * 3);
+            await stanToken.cancelLock(userA.address, 0);
+            await stanToken.cancelLock(userB.address, 0);
+            await stanToken.cancelLock(userC.address, 0);
+
+            // release 시도
+            await time.increase(60 * 60 * 24 * 30 * 3);
+
+            // release 실패
+            await expect(stanToken.release(userA.address)).to.be.revertedWith("No lock information.");
+            await expect(stanToken.release(userB.address)).to.be.revertedWith("No lock information.");
+
+            await stanToken.release(userC.address);
+            // userC 는 24개월 후 4000 STAN release
+
+            // userC의 STAN 잔액 확인
+            expect(await stanToken.balanceOf(userC.address)).to.equal("0");
+            // userC의 locked STAN 잔액 확인
+            expect(await stanToken.lockedBalanceOf(userC.address)).to.equal("4000000000000000000000");
+
+            // 18개월 후 (총 24개월 후)
+            await time.increase(60 * 60 * 24 * 30 * 18);
+
+            // userC release
+            await stanToken.release(userC.address);
+
+            // userC의 STAN 잔액 확인
+            expect(await stanToken.balanceOf(userC.address)).to.equal("4000000000000000000000");
+            // userC의 locked STAN 잔액 확인
+            expect(await stanToken.lockedBalanceOf(userC.address)).to.equal("0");
+        });
+    });
+});
   
