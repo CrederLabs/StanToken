@@ -15,17 +15,17 @@ contract StanToken is ERC20, Ownable, Pausable {
     }
 
     /* ========== ReentrancyGuard ========== */
-    // mapping (address => bool) private _locks;
+    mapping (address => bool) private _locks;
 
-    // modifier nonReentrant {
-    //     require(_locks[msg.sender] != true, "ReentrancyGuard: reentrant call");
+    modifier nonReentrant {
+        require(_locks[msg.sender] != true, "ReentrancyGuard: reentrant call");
 
-    //     _locks[msg.sender] = true;
+        _locks[msg.sender] = true;
 
-    //     _;
+        _;
     
-    //     _locks[msg.sender] = false;
-    // }
+        _locks[msg.sender] = false;
+    }
 
     /* ========== Freezable ========== */
     mapping(address => bool) blacklist;
@@ -47,24 +47,22 @@ contract StanToken is ERC20, Ownable, Pausable {
     }
 
     /* ========== ERC20 ========== */
-    function balanceOf(address _holder) public view override returns (uint256) {
-        uint256 lockedBalance = 0;
-        for(uint256 i = 0; i < lockInfo[_holder].length ; i++ ) {
-            lockedBalance = lockedBalance + (lockInfo[_holder][i].balance);
-        }
-        return super.balanceOf(_holder) + lockedBalance;
-    }
+    // function balanceOf(address _holder) public view override returns (uint256) {
+    //     uint256 lockedBalance = 0;
+    //     for(uint256 i = 0; i < lockInfo[_holder].length ; i++ ) {
+    //         lockedBalance = lockedBalance + (lockInfo[_holder][i].balance);
+    //     }
+    //     return super.balanceOf(_holder) + lockedBalance;
+    // }
 
     function transfer(address sender, address recipient, uint256 amount) internal virtual whenNotPaused returns (bool) {
         require(!blacklist[sender] && !blacklist[recipient], "The user is frozen");
-        releaseLock(msg.sender);
         super._transfer(sender, recipient, amount);
         return true;
     }
 
     function transferFrom(address sender, address recipient, uint256 amount) public virtual override whenNotPaused returns (bool) {
         require(!blacklist[sender] && !blacklist[recipient], "The user is frozen");
-        releaseLock(sender);
         super.transferFrom(sender, recipient, amount);
         return true;
     }
@@ -77,7 +75,7 @@ contract StanToken is ERC20, Ownable, Pausable {
 
     mapping(address => LockInfo[]) internal lockInfo;
 
-    function lockBalanceOf(address holder) public view returns (uint256) {
+    function lockedBalanceOf(address holder) public view returns (uint256) {
         uint256 total = 0;
         for (uint256 i = 0; i < lockInfo[holder].length; i++) {
             total += lockInfo[holder][i].balance;
@@ -85,21 +83,38 @@ contract StanToken is ERC20, Ownable, Pausable {
         return total;
     }
 
-    function releaseLock(address _holder) internal {
+    // lock 된 정보 중 releaseTime이 지난 정보를 return
+    function estimateAmountToReleaseLock(address _holder) public view returns (uint256) {
+        uint256 total = 0;
         if (lockInfo[_holder].length > 0) {
             for (uint256 i = 0; i < lockInfo[_holder].length ; i++) {
                 if (lockInfo[_holder][i].releaseTime <= block.timestamp) {
-                    // _balances[_holder] = _balances[_holder].add(lockInfo[_holder][i].balance);
-                    // TODO: lockInfo[_holder][i].balance 수량을 _holder에게 전송
-                    _transfer(address(this), _holder, lockInfo[_holder][i].balance);
-                    emit Unlock(_holder, lockInfo[_holder][i].balance);
-                    lockInfo[_holder][i].balance = 0;
-
-                    if (i != lockInfo[_holder].length - 1) {
-                        lockInfo[_holder][i] = lockInfo[_holder][lockInfo[_holder].length - 1];
-                    }
-                    lockInfo[_holder].pop();
+                    total += lockInfo[_holder][i].balance;
                 }
+            }
+        }
+        return total;
+    }
+
+    // msg.sender 한테 lock 된 정보가 있으면 releaseTime이 지났는지 확인하고 지났으면 수량을 전송
+    function release(address _holder) external whenNotPaused nonReentrant {
+        require(_holder == msg.sender || msg.sender == owner(), "Only the holder can release the lock.");
+        require(!blacklist[_holder], "The user is frozen");
+        require(lockInfo[_holder].length > 0, "No lock information.");
+
+        for (uint256 i = 0; i < lockInfo[_holder].length ; i++) {
+            if (lockInfo[_holder][i].releaseTime <= block.timestamp) {
+                uint256 amount = lockInfo[_holder][i].balance;
+                lockInfo[_holder][i].balance = 0;
+                
+                if (i != lockInfo[_holder].length - 1) {
+                    lockInfo[_holder][i] = lockInfo[_holder][lockInfo[_holder].length - 1];
+                }
+                lockInfo[_holder].pop();
+
+                _transfer(address(this), _holder, amount);
+                
+                emit Claim(_holder, amount);
             }
         }
     }
@@ -112,74 +127,50 @@ contract StanToken is ERC20, Ownable, Pausable {
         return (lockInfo[_holder][_idx].releaseTime, lockInfo[_holder][_idx].balance);
     }
 
-    function lock(address _holder, uint256 _amount, uint256 _releaseTime) public onlyOwner {
-        require(super.balanceOf(_holder) >= _amount, "Balance is too small.");
-        require(_releaseTime > block.timestamp, "Release time should be in the future");
+    // holder의 total lock 정보 return
+    function lockStates(address _holder) public view returns (LockInfo[] memory) {
+        return lockInfo[_holder];
+    }
 
-        // _balances[_holder] = _balances[_holder].sub(_amount);
-        transferFrom(_holder, address(this), _amount);
-        lockInfo[_holder].push(
+    // lock: owner 가 가지고 있던 STAN 수량을 STAN contract에게 전송하고, lock 정보를 추가(유저, 수량, releaseTime)
+    // releaseTime이 되면 해당 유저는 lock 정보를 통해 STAN 수량을 받을 수 있음
+    function lock(address _to, uint256 _amount, uint256 _releaseTime) public onlyOwner {
+        require(super.balanceOf(msg.sender) >= _amount, "Balance is too small.");
+        require(_releaseTime > block.timestamp, "Release time should be in the future");
+        
+        transferFrom(msg.sender, address(this), _amount);
+        lockInfo[_to].push(
             LockInfo(_releaseTime, _amount)
         );
-        emit Lock(_holder, _amount, _releaseTime);
+        emit Lock(_to, _amount, _releaseTime);
     }
 
-    function lockAfter(address _holder, uint256 _amount, uint256 _afterTime) public onlyOwner {
-        require(super.balanceOf(_holder) >= _amount, "Balance is too small.");
-        // _balances[_holder] = _balances[_holder].sub(_amount);
-        transferFrom(_holder, address(this), _amount);
-        lockInfo[_holder].push(
+    function lockAfter(address _to, uint256 _amount, uint256 _afterTime) public onlyOwner {
+        require(super.balanceOf(msg.sender) >= _amount, "Balance is too small.");
+
+        transferFrom(msg.sender, address(this), _amount);
+        lockInfo[_to].push(
             LockInfo(block.timestamp + _afterTime, _amount)
         );
-        emit Lock(_holder, _amount, block.timestamp + _afterTime);
+        emit Lock(_to, _amount, block.timestamp + _afterTime);
     }
 
-    function unlock(address _holder, uint256 i) public onlyOwner {
+    // unlock: lock 된 정보를 해제하고 STAN 수량을 다시 owner에게 전송 (vesting 취소 시 사용)
+    function cancelLock(address _holder, uint256 i) public onlyOwner {
         require(i < lockInfo[_holder].length, "No lock information.");
 
-        // _balances[_holder] = _balances[_holder].add(lockInfo[_holder][i].balance);
-        _transfer(address(this), _holder, lockInfo[_holder][i].balance);
-
-        emit Unlock(_holder, lockInfo[_holder][i].balance);
-        lockInfo[_holder][i].balance = 0;
-
+        uint256 amount = lockInfo[_holder][i].balance;
+        lockInfo[_holder][i].balance = 0;   // 없어도 되는 코드... lockInfo[_holder].pop()에서 처리됨
+        
         if (i != lockInfo[_holder].length - 1) {
             lockInfo[_holder][i] = lockInfo[_holder][lockInfo[_holder].length - 1];
         }
-        // lockInfo[_holder].length--;
         lockInfo[_holder].pop();
-    }
 
-    function transferWithLock(address _to, uint256 _value, uint256 _releaseTime) public onlyOwner returns (bool) {
-        require(_to != address(0), "wrong address");
-        require(_value <= super.balanceOf(msg.sender), "Not enough balance");
+        // 취소 물량은 owner에게 전송
+        transfer(address(this), msg.sender, amount);
 
-        // _balances[owner] = _balances[owner].sub(_value);
-        transferFrom(msg.sender, address(this), _value);
-
-        lockInfo[_to].push(
-            LockInfo(_releaseTime, _value)
-        );
-        emit Transfer(msg.sender, _to, _value);
-        emit Lock(_to, _value, _releaseTime);
-
-        return true;
-    }
-
-    function transferWithLockAfter(address _to, uint256 _value, uint256 _afterTime) public onlyOwner returns (bool) {
-        require(_to != address(0), "wrong address");
-        require(_value <= super.balanceOf(msg.sender), "Not enough balance");
-
-        // _balances[owner] = _balances[owner].sub(_value);
-        transferFrom(msg.sender, address(this), _value);
-
-        lockInfo[_to].push(
-            LockInfo(block.timestamp + _afterTime, _value)
-        );
-        emit Transfer(msg.sender, _to, _value);
-        emit Lock(_to, _value, block.timestamp + _afterTime);
-
-        return true;
+        emit CancelLock(_holder, amount);
     }
 
     /* ========== TIME ========== */
@@ -191,10 +182,20 @@ contract StanToken is ERC20, Ownable, Pausable {
         return block.timestamp + _value;
     }
 
+    /* ========== Recovery ========== */
+    function recoverERC20(address tokenAddress, uint256 tokenAmount) public onlyOwner {
+        IERC20(tokenAddress).transfer(owner(), tokenAmount);
+    }
+
+    function recoverETH(uint256 amount) public onlyOwner {
+        payable(owner()).transfer(amount);
+    }
+
     /* ========== EVENTS ========== */
     event Frozen(address indexed who);
     event Unfrozen(address indexed who);
 
     event Lock(address indexed holder, uint256 value, uint256 releaseTime);
-    event Unlock(address indexed holder, uint256 value);
+    event CancelLock(address indexed holder, uint256 value);
+    event Claim(address indexed holder, uint256 value);
 }
