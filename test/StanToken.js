@@ -10,12 +10,6 @@ describe("StanToken", function () {
     // We use loadFixture to run this setup once, snapshot that state,
     // and reset Hardhat Network to that snapshot in every test.
     async function deployFixture() {
-        // const ONE_YEAR_IN_SECS = 365 * 24 * 60 * 60;
-        // const ONE_GWEI = 1_000_000_000;
-
-        // const lockedAmount = ONE_GWEI;
-        // const unlockTime = (await time.latest()) + ONE_YEAR_IN_SECS;
-
         // Contracts are deployed using the first signer/account by default
         const [owner, otherAccount, userA, userB, userC] = await ethers.getSigners();
 
@@ -134,7 +128,7 @@ describe("StanToken", function () {
             await stanToken.lockAfter(userB.address, "2000000000000000000000", 60 * 60 * 24 * 30 * 12);
             await stanToken.lock(userC.address, "3000000000000000000000", currentTimestamp + 60 * 60 * 24 * 30 * 18);
             await stanToken.lockAfter(userC.address, "4000000000000000000000", 60 * 60 * 24 * 30 * 24);
-
+            
             // availableReleaseLock
             expect(await stanToken.estimateAmountToReleaseLock(userA.address)).to.equal("0");
 

@@ -75,6 +75,14 @@ contract StanToken is ERC20, Ownable, Pausable {
 
     mapping(address => LockInfo[]) internal lockInfo;
 
+    // release 하면 히스토리 남기기 위한 구조체
+    struct ReleasedHistory {
+        uint256 releaseTime;
+        uint256 balance;
+    }
+
+    mapping(address => ReleasedHistory[]) internal releasedHistory;
+
     function lockedBalanceOf(address holder) public view returns (uint256) {
         uint256 total = 0;
         for (uint256 i = 0; i < lockInfo[holder].length; i++) {
@@ -83,7 +91,7 @@ contract StanToken is ERC20, Ownable, Pausable {
         return total;
     }
 
-    // lock 된 정보 중 releaseTime이 지난 정보를 return
+    // lock 된 정보 중 releaseTime이 지난 정보를 return (즉, Claim 가능한 수량)
     function estimateAmountToReleaseLock(address _holder) public view returns (uint256) {
         uint256 total = 0;
         if (lockInfo[_holder].length > 0) {
@@ -111,6 +119,10 @@ contract StanToken is ERC20, Ownable, Pausable {
                     lockInfo[_holder][i] = lockInfo[_holder][lockInfo[_holder].length - 1];
                 }
                 lockInfo[_holder].pop();
+                // ReleasedHistory 추가
+                releasedHistory[_holder].push(
+                    ReleasedHistory(block.timestamp, amount)
+                );
 
                 _transfer(address(this), _holder, amount);
                 
@@ -127,9 +139,44 @@ contract StanToken is ERC20, Ownable, Pausable {
         return (lockInfo[_holder][_idx].releaseTime, lockInfo[_holder][_idx].balance);
     }
 
-    // holder의 total lock 정보 return
     function lockStates(address _holder) public view returns (LockInfo[] memory) {
         return lockInfo[_holder];
+    }
+
+    function lockStates2(address _holder) public view returns (uint256[] memory, uint256[] memory) {
+        uint256[] memory releaseTimes = new uint256[](lockInfo[_holder].length);
+        uint256[] memory balances = new uint256[](lockInfo[_holder].length);
+
+        for (uint256 i = 0; i < lockInfo[_holder].length; i++) {
+            releaseTimes[i] = lockInfo[_holder][i].releaseTime;
+            balances[i] = lockInfo[_holder][i].balance;
+        }
+
+        return (releaseTimes, balances);
+    }
+
+    function releasedHistoryCount(address _holder) public view returns (uint256) {
+        return releasedHistory[_holder].length;
+    }
+
+    function releasedHistoryState(address _holder, uint256 _idx) public view returns (uint256, uint256) {
+        return (releasedHistory[_holder][_idx].releaseTime, releasedHistory[_holder][_idx].balance);
+    }
+
+    function releasedHistoryStates(address _holder) public view returns (ReleasedHistory[] memory) {
+        return releasedHistory[_holder];
+    }
+
+    function releasedHistoryStates2(address _holder) public view returns (uint256[] memory, uint256[] memory) {
+        uint256[] memory releaseTimes = new uint256[](releasedHistory[_holder].length);
+        uint256[] memory balances = new uint256[](releasedHistory[_holder].length);
+
+        for (uint256 i = 0; i < releasedHistory[_holder].length; i++) {
+            releaseTimes[i] = releasedHistory[_holder][i].releaseTime;
+            balances[i] = releasedHistory[_holder][i].balance;
+        }
+
+        return (releaseTimes, balances);
     }
 
     // lock: owner 가 가지고 있던 STAN 수량을 STAN contract에게 전송하고, lock 정보를 추가(유저, 수량, releaseTime)
