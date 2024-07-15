@@ -6,7 +6,9 @@
     "compile": "npx hardhat compile",
     "test": "npx hardhat test",
     "clean": "rm -rf ./artifacts ./cache",
-    "deploy": "NETWORK=local npx hardhat run ./ignition/modules/StanToken.js"
+    "deploy": "NETWORK=local npx hardhat run scripts/deploy.js",
+    "deploy:fuji": "NETWORK=fuji npx hardhat run scripts/deploy.js --network snowtrace",
+    "verify:fuji": "NETWORK=fuji npx hardhat verify --network snowtrace 0x..."
   },
   "repository": "https://github.com/CrederLabs/StanToken.git",
   "author": "Booyoun <booyoun@creder.biz>",
