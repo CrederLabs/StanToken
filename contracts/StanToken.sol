@@ -83,16 +83,17 @@ contract StanToken is ERC20, Ownable, Pausable {
 
     mapping(address => ReleasedHistory[]) internal releasedHistory;
 
-    function lockedBalanceOf(address holder) public view returns (uint256) {
+    // Remaining Tokens
+    function remainingTokens(address _holder) public view returns (uint256) {
         uint256 total = 0;
-        for (uint256 i = 0; i < lockInfo[holder].length; i++) {
-            total += lockInfo[holder][i].balance;
+        for (uint256 i = 0; i < lockInfo[_holder].length; i++) {
+            total += lockInfo[_holder][i].balance;
         }
         return total;
     }
 
     // lock 된 정보 중 releaseTime이 지난 정보를 return (즉, Claim 가능한 수량)
-    function estimateAmountToReleaseLock(address _holder) public view returns (uint256) {
+    function claimableTokens(address _holder) public view returns (uint256) {
         uint256 total = 0;
         if (lockInfo[_holder].length > 0) {
             for (uint256 i = 0; i < lockInfo[_holder].length ; i++) {
@@ -100,6 +101,15 @@ contract StanToken is ERC20, Ownable, Pausable {
                     total += lockInfo[_holder][i].balance;
                 }
             }
+        }
+        return total;
+    }
+
+    // 지금까지 claim 된 수량을 return
+    function claimedTokens(address _holder) public view returns (uint256) {
+        uint256 total = 0;
+        for (uint256 i = 0; i < releasedHistory[_holder].length; i++) {
+            total += releasedHistory[_holder][i].balance;
         }
         return total;
     }
@@ -119,6 +129,7 @@ contract StanToken is ERC20, Ownable, Pausable {
                     lockInfo[_holder][i] = lockInfo[_holder][lockInfo[_holder].length - 1];
                 }
                 lockInfo[_holder].pop();
+                
                 // ReleasedHistory 추가
                 releasedHistory[_holder].push(
                     ReleasedHistory(block.timestamp, amount)
@@ -179,6 +190,23 @@ contract StanToken is ERC20, Ownable, Pausable {
         return (releaseTimes, balances);
     }
 
+    // lockCount 와 releasedHistoryCount 정보를 합쳐서 Total Lock 수량을 return
+    function totalLocks(address _holder) public view returns (uint256) {
+        return lockInfo[_holder].length + releasedHistory[_holder].length;
+    }
+
+    // lockInfo 와 releasedHistory 정보를 합쳐서 Total Vested Tokens 수량을 return
+    function totalVestedTokens(address _holder) public view returns (uint256) {
+        uint256 total = 0;
+        for (uint256 i = 0; i < lockInfo[_holder].length; i++) {
+            total += lockInfo[_holder][i].balance;
+        }
+        for (uint256 i = 0; i < releasedHistory[_holder].length; i++) {
+            total += releasedHistory[_holder][i].balance;
+        }
+        return total;
+    }
+
     // lock: owner 가 가지고 있던 STAN 수량을 STAN contract에게 전송하고, lock 정보를 추가(유저, 수량, releaseTime)
     // releaseTime이 되면 해당 유저는 lock 정보를 통해 STAN 수량을 받을 수 있음
     function lock(address _to, uint256 _amount, uint256 _releaseTime) public onlyOwner {
@@ -207,6 +235,10 @@ contract StanToken is ERC20, Ownable, Pausable {
         require(i < lockInfo[_holder].length, "No lock information.");
 
         uint256 amount = lockInfo[_holder][i].balance;
+
+        // 먼저 잔액이 충분한지 확인
+        require(super.balanceOf(address(this)) >= amount, "STAN Balance is too small.");
+
         lockInfo[_holder][i].balance = 0;   // 없어도 되는 코드... lockInfo[_holder].pop()에서 처리됨
         
         if (i != lockInfo[_holder].length - 1) {
@@ -214,8 +246,11 @@ contract StanToken is ERC20, Ownable, Pausable {
         }
         lockInfo[_holder].pop();
 
-        // 취소 물량은 owner에게 전송
-        transfer(address(this), msg.sender, amount);
+        // 취소 물량은 owner에게 전송(이미 this contract에게 전송되어 있음)
+        // transferFrom(address(this), msg.sender, amount);
+        // this contract balance 에서 owner에게 전송
+        // transfer(address(this), msg.sender, amount);
+        _transfer(address(this), msg.sender, amount);
 
         emit CancelLock(_holder, amount);
     }
