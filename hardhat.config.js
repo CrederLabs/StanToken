@@ -22,6 +22,7 @@ module.exports = {
       snowtrace: "snowtrace", // apiKey is not required, just set a placeholder
     },
     customChains: [
+      // * Avalanche Testnet verify 참고: https://testnet.snowtrace.io/documentation/recipes/hardhat-verification
       {
         network: "snowtrace",
         chainId: 43113,
@@ -29,7 +30,16 @@ module.exports = {
           apiURL: "https://api.routescan.io/v2/network/testnet/evm/43113/etherscan",
           browserURL: "https://avalanche.testnet.localhost:8080"
         }
-      }
+      },
+      // * Avalanche Mainnet verify 참고: https://snowtrace.io/documentation/recipes/hardhat-verification
+      // {
+      //   network: "snowtrace",
+      //   chainId: 43114,
+      //   urls: {
+      //     apiURL: "https://api.routescan.io/v2/network/mainnet/evm/43114/etherscan",
+      //     browserURL: "https://avalanche.routescan.io"
+      //   }
+      // }
     ]
   },
   networks: {
@@ -39,12 +49,12 @@ module.exports = {
         process.env.PRIVATE_KEY || ''
       ],
     },
-    mainnet: {
-      url: "https://api.avax.network/ext/bc/C/rpc",
-      chainId: 43114,
-      accounts: [
-        process.env.PRIVATE_KEY || ''
-      ],
-    },
+    // snowtrace: {
+    //   url: "https://api.avax.network/ext/bc/C/rpc",
+    //   chainId: 43114,
+    //   accounts: [
+    //     process.env.PRIVATE_KEY || ''
+    //   ],
+    // },
   }
 };
