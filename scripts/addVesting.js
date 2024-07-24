@@ -30,24 +30,40 @@ async function main() {
     // console.log("totalLocks: ", result.toString());
 
     // 특정 주소에 대해 vesting 추가(wormhole study 테스트 계정)
-    const userAddress = "0xcF7f1535CCb3fF8acdbE2D44087996285D3a9B1B";
+    // const userAddress = "0xcF7f1535CCb3fF8acdbE2D44087996285D3a9B1B";
+
+    // 재원 주소
+    const userAddress = "0xd67fA1D561aEFdF1d4CB935AB4290449E4D3bB06";
 
     // 미리 approve 해야함
-    
-    // 1. vesting 추가
-    let vestingAmount = ethers.parseUnits("100", 18);
-    // 6개월 후
-    let releaseTime = Math.floor(Date.now() / 1000) + 60*60*24*30*6; // 6개월 후
-    let tx = await stanToken.lock(userAddress, vestingAmount, releaseTime);
-    await tx.wait();
-    console.log(vestingAmount + " STAN is locked until " + new Date(releaseTime * 1000).toUTCString());
 
-    // 1년 후
-    vestingAmount = ethers.parseUnits("200", 18);
-    releaseTime = Math.floor(Date.now() / 1000) + 60*60*24*365; // 1년 후
-    tx = await stanToken.lock(userAddress, vestingAmount, releaseTime);
-    await tx.wait();
-    console.log(vestingAmount + " STAN is locked until " + new Date(releaseTime * 1000).toUTCString());
+    // vesting 10 STAN 10개. 현재 시간 기준으로 10분 간격
+    let vestingAmount = ethers.parseUnits("10", 18);
+
+    let currentTimestamp = Math.floor(Date.now() / 1000);
+
+    for (let i = 0; i < 10; i++) {
+      console.log(i + "번째 vesting");
+
+      let tx = await stanToken.lock(userAddress, vestingAmount, currentTimestamp + 600 + 60 * 10 * i);
+      await tx.wait();
+      console.log(vestingAmount + " STAN is locked until " + new Date((currentTimestamp + 60*10) * 1000).toUTCString());
+    }
+
+    // // 1. vesting 추가
+    // let vestingAmount = ethers.parseUnits("10", 18);
+    // // 6개월 후
+    // let releaseTime = Math.floor(Date.now() / 1000) + 60*60*24*30*6; // 6개월 후
+    // let tx = await stanToken.lock(userAddress, vestingAmount, releaseTime);
+    // await tx.wait();
+    // console.log(vestingAmount + " STAN is locked until " + new Date(releaseTime * 1000).toUTCString());
+
+    // // 1년 후
+    // vestingAmount = ethers.parseUnits("200", 18);
+    // releaseTime = Math.floor(Date.now() / 1000) + 60*60*24*365; // 1년 후
+    // tx = await stanToken.lock(userAddress, vestingAmount, releaseTime);
+    // await tx.wait();
+    // console.log(vestingAmount + " STAN is locked until " + new Date(releaseTime * 1000).toUTCString());
 
     console.log("All done");
 }

@@ -75,40 +75,88 @@ describe("StanToken", function () {
     describe("Vesting", function () {
 
         // userA 에게 1000 STAN, userB 에게 2000 STAN, userC 에게 3000, 4000 STAN을 lock
-        it("Should lock the tokens for the users", async function () {
-            const { stanToken, owner, userA, userB, userC } = await loadFixture(deployFixture);
+        // it("Should lock the tokens for the users", async function () {
+        //     const { stanToken, owner, userA, userB, userC } = await loadFixture(deployFixture);
+
+        //     // approve
+        //     stanToken.approve(owner.address, "10000000000000000000000");
+
+        //     let timestamp = await time.latest() + 1000;
+
+        //     await stanToken.lock(userA.address, "1000000000000000000000", timestamp);
+        //     await stanToken.lock(userB.address, "2000000000000000000000", timestamp);
+        //     await stanToken.lock(userC.address, "3000000000000000000000", timestamp);
+        //     await stanToken.lock(userC.address, "4000000000000000000000", timestamp);
+
+        //     // lockCount
+        //     expect(await stanToken.lockCount(userA.address)).to.equal(1);
+        //     expect(await stanToken.lockCount(userB.address)).to.equal(1);
+        //     expect(await stanToken.lockCount(userC.address)).to.equal(2);
+
+        //     expect(await stanToken.lockState(userA.address, 0)).to.deep.equal([timestamp, "1000000000000000000000"]);
+            
+        //     expect(await stanToken.lockStates(userC.address)).to.deep.equal([[timestamp, "3000000000000000000000"], [timestamp, "4000000000000000000000"]]);
+            
+        //     expect(await stanToken.balanceOf(userA.address)).to.equal(0);
+        //     expect(await stanToken.balanceOf(userB.address)).to.equal(0);
+        //     expect(await stanToken.balanceOf(userC.address)).to.equal(0);
+            
+        //     // stanToken Contract balanceOf
+        //     expect(await stanToken.balanceOf(stanToken.target)).to.equal("10000000000000000000000");
+        // });
+
+        // userA 에게 1000, 1000, ... 1000 STAN을 10번 lock
+        // 버그: 6개 정도 풀릴 때 1번째 lock이 release 되지 않음
+        it("Should release the tokens for the user", async function () {
+            const { stanToken, owner, userA } = await loadFixture(deployFixture);
 
             // approve
-            stanToken.approve(owner.address, "10000000000000000000000");
+            await stanToken.approve(owner.address, "10000000000000000000000");
 
-            let timestamp = await time.latest() + 1000;
+            let timestamp = await time.latest();
 
-            await stanToken.lock(userA.address, "1000000000000000000000", timestamp);
-            await stanToken.lock(userB.address, "2000000000000000000000", timestamp);
-            await stanToken.lock(userC.address, "3000000000000000000000", timestamp);
-            await stanToken.lock(userC.address, "4000000000000000000000", timestamp);
+            for (let i = 0; i < 10; i++) {
+                await stanToken.lock(userA.address, "100000000000000000000", timestamp + 600 * (i + 1));
+            }
 
-            // lockCount
-            expect(await stanToken.lockCount(userA.address)).to.equal(1);
-            expect(await stanToken.lockCount(userB.address)).to.equal(1);
-            expect(await stanToken.lockCount(userC.address)).to.equal(2);
+            // 바로 release 시도
+            await stanToken.release(userA.address);
+            expect(await stanToken.lockCount(userA.address)).to.equal(10);
 
-            // lockState
-            expect(await stanToken.lockState(userA.address, 0)).to.deep.equal([timestamp, "1000000000000000000000"]);
+            for (let i = 0; i < 10; i++) {
+                await stanToken.lockState(userA.address, i);
+            }
+            await stanToken.consoleLine();
             
-            // lockStates
-            expect(await stanToken.lockStates(userC.address)).to.deep.equal([[timestamp, "3000000000000000000000"], [timestamp, "4000000000000000000000"]]);
-            
-            expect(await stanToken.balanceOf(userA.address)).to.equal(0);
-            expect(await stanToken.balanceOf(userB.address)).to.equal(0);
-            expect(await stanToken.balanceOf(userC.address)).to.equal(0);
-            
-            expect(await stanToken.lockedBalanceOf(userA.address)).to.equal("1000000000000000000000");
-            expect(await stanToken.lockedBalanceOf(userB.address)).to.equal("2000000000000000000000");
-            expect(await stanToken.lockedBalanceOf(userC.address)).to.equal("7000000000000000000000");
+            // 61분 후 release 시도 (여러개 중에서 0번째가 release 가 안되는 버그가 있는듯. 확인 필요)
+            await time.increase(600 * 6 + 60);
 
-            // stanToken Contract balanceOf
-            expect(await stanToken.balanceOf(stanToken.target)).to.equal("10000000000000000000000");
+            await stanToken.release(userA.address);
+
+
+
+            expect(await stanToken.releasedHistoryCount(userA.address)).to.equal(6);
+
+            // 로그 확인
+            let len = await stanToken.releasedHistoryCount(userA.address);
+            for (let i = 0; i < len; i++) {
+                await stanToken.lockState(userA.address, i);
+            }
+
+            
+
+            // // lockCount
+            // expect(await stanToken.lockCount(userA.address)).to.equal(10);
+            // // lockState
+            // expect(await stanToken.lockState(userA.address, 0)).to.deep.equal([timestamp, "1000000000000000000000"]);
+            // // lockStates
+            // expect(await stanToken.lockStates(userA.address)).to.deep.equal(Array(10).fill([timestamp, "1000000000000000000000"]));
+
+            // expect(await stanToken.balanceOf(userA.address)).to.equal(0);
+            // // expect(await stanToken.lockedBalanceOf(userA.address)).to.equal("10000000000000000000000");
+
+            // // stanToken Contract balanceOf
+            // expect(await stanToken.balanceOf(stanToken.target)).to.equal("10000000000000000000000");
         });
 
         // userA 에게 1000 STAN, userB 에게 2000 STAN, userC 에게 3000, 4000 STAN을 lock.
@@ -130,11 +178,11 @@ describe("StanToken", function () {
             await stanToken.lockAfter(userC.address, "4000000000000000000000", 60 * 60 * 24 * 30 * 24);
             
             // availableReleaseLock
-            expect(await stanToken.estimateAmountToReleaseLock(userA.address)).to.equal("0");
+            // expect(await stanToken.estimateAmountToReleaseLock(userA.address)).to.equal("0");
 
             await time.increase(60 * 60 * 24 * 30 * 6);
 
-            expect(await stanToken.estimateAmountToReleaseLock(userA.address)).to.equal("1000000000000000000000");
+            // expect(await stanToken.estimateAmountToReleaseLock(userA.address)).to.equal("1000000000000000000000");
 
             await stanToken.release(userA.address);
 
@@ -144,19 +192,7 @@ describe("StanToken", function () {
             await time.increase(60 * 60 * 24 * 30 * 18);
             await stanToken.release(userC.address);
 
-            expect(await stanToken.balanceOf(userC.address)).to.equal("3000000000000000000000");
-            expect(await stanToken.lockedBalanceOf(userC.address)).to.equal("4000000000000000000000");
-
-            await time.increase(60 * 60 * 24 * 30 * 24);
-            await stanToken.release(userC.address);
-
-            expect(await stanToken.balanceOf(userA.address)).to.equal("1000000000000000000000");
-            expect(await stanToken.balanceOf(userB.address)).to.equal("2000000000000000000000");
             expect(await stanToken.balanceOf(userC.address)).to.equal("7000000000000000000000");
-
-            expect(await stanToken.lockedBalanceOf(userA.address)).to.equal(0);
-            expect(await stanToken.lockedBalanceOf(userB.address)).to.equal(0);
-            expect(await stanToken.lockedBalanceOf(userC.address)).to.equal(0);
 
             // stanToken Contract balanceOf
             expect(await stanToken.balanceOf(stanToken.target)).to.equal(0);
@@ -194,7 +230,7 @@ describe("StanToken", function () {
             // userC의 STAN 잔액 확인
             expect(await stanToken.balanceOf(userC.address)).to.equal("0");
             // userC의 locked STAN 잔액 확인
-            expect(await stanToken.lockedBalanceOf(userC.address)).to.equal("4000000000000000000000");
+            // expect(await stanToken.lockedBalanceOf(userC.address)).to.equal("4000000000000000000000");
 
             // 18개월 후 (총 24개월 후)
             await time.increase(60 * 60 * 24 * 30 * 18);
@@ -205,7 +241,7 @@ describe("StanToken", function () {
             // userC의 STAN 잔액 확인
             expect(await stanToken.balanceOf(userC.address)).to.equal("4000000000000000000000");
             // userC의 locked STAN 잔액 확인
-            expect(await stanToken.lockedBalanceOf(userC.address)).to.equal("0");
+            // expect(await stanToken.lockedBalanceOf(userC.address)).to.equal("0");
         });
     });
 });

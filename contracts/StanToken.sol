@@ -2,7 +2,7 @@
 pragma solidity ^0.8.24;
 
 // Uncomment this line to use console.log
-// import "hardhat/console.sol";
+import "hardhat/console.sol";
 
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
@@ -120,26 +120,59 @@ contract StanToken is ERC20, Ownable, Pausable {
         require(!blacklist[_holder], "The user is frozen");
         require(lockInfo[_holder].length > 0, "No lock information.");
 
-        for (uint256 i = 0; i < lockInfo[_holder].length ; i++) {
+        for (uint256 i = 0; i < lockInfo[_holder].length; i++) {
+            // releaseTime이 지났으면 수량을 전송
+            // lockInfo는 releaseTime이 지난 것은 삭제하지 않고 balance만 0으로 처리
+
+            // balance가 0이면 이미 release 된 것이므로 skip
+            if (lockInfo[_holder][i].balance == 0) {
+                continue;
+            }
+
             if (lockInfo[_holder][i].releaseTime <= block.timestamp) {
                 uint256 amount = lockInfo[_holder][i].balance;
                 lockInfo[_holder][i].balance = 0;
-                
-                if (i != lockInfo[_holder].length - 1) {
-                    lockInfo[_holder][i] = lockInfo[_holder][lockInfo[_holder].length - 1];
-                }
-                lockInfo[_holder].pop();
-                
+
                 // ReleasedHistory 추가
                 releasedHistory[_holder].push(
                     ReleasedHistory(block.timestamp, amount)
                 );
 
                 _transfer(address(this), _holder, amount);
-                
+
                 emit Claim(_holder, amount);
             }
         }
+
+
+        
+
+        // // 10개 중에서 6개 release time이 되었을 때 가정
+        // uint256 len = lockInfo[_holder].length;
+        // for (uint256 i = 0; i < len; i++) {
+        //     console.log(i, "th lock is released. release time:", lockInfo[_holder][i].releaseTime);
+        //     console.log("block.timestamp: ", block.timestamp);
+
+        //     if (lockInfo[_holder][i].releaseTime <= block.timestamp) {
+        //         uint256 amount = lockInfo[_holder][i].balance;
+        //         lockInfo[_holder][i].balance = 0;
+                
+        //         // i == 0
+        //         if (i != lockInfo[_holder].length - 1) {
+        //             lockInfo[_holder][i] = lockInfo[_holder][lockInfo[_holder].length - 1];
+        //         }
+        //         lockInfo[_holder].pop();
+                
+        //         // ReleasedHistory 추가
+        //         releasedHistory[_holder].push(
+        //             ReleasedHistory(block.timestamp, amount)
+        //         );
+
+        //         _transfer(address(this), _holder, amount);
+                
+        //         emit Claim(_holder, amount);
+        //     }
+        // }
     }
 
     function lockCount(address _holder) public view returns (uint256) {
@@ -147,7 +180,20 @@ contract StanToken is ERC20, Ownable, Pausable {
     }
 
     function lockState(address _holder, uint256 _idx) public view returns (uint256, uint256) {
+        console.log(lockInfo[_holder][_idx].releaseTime);
+        console.log(lockInfo[_holder][_idx].balance);
+
         return (lockInfo[_holder][_idx].releaseTime, lockInfo[_holder][_idx].balance);
+    }
+
+    function consoleLine() public pure returns (string memory) {
+        console.log("====================");
+        return "====================";
+    }
+
+    function log(string memory _log) public pure returns (string memory) {
+        console.log(_log);
+        return _log;
     }
 
     function lockStates(address _holder) public view returns (LockInfo[] memory) {
