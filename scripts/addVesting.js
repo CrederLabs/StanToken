@@ -23,7 +23,7 @@ async function main() {
     //     return;
     // }
 
-    const stanTokenAddress = "0x4f927e09ED2d062802941799ff33Da9B9A13FEEE";
+    const stanTokenAddress = "0xcFB2324F5b2241ac8df3d4A77B53D7840B795b90";
     const stanToken = await ethers.getContractAt("StanToken", stanTokenAddress);
 
     // let result = await stanToken.totalLocks("0xd67fA1D561aEFdF1d4CB935AB4290449E4D3bB06");
@@ -47,8 +47,31 @@ async function main() {
 
       let tx = await stanToken.lock(userAddress, vestingAmount, currentTimestamp + 600 + 60 * 10 * i);
       await tx.wait();
-      console.log(vestingAmount + " STAN is locked until " + new Date((currentTimestamp + 60*10) * 1000).toUTCString());
+      console.log(vestingAmount + " STAN is locked until " + new Date((currentTimestamp + 600 + 60 * 10 * i) * 1000).toUTCString());
     }
+
+    // 2일 후
+    console.log("2일 후");
+    for (let i = 0; i < 10; i++) {
+      console.log(i + "번째 vesting");
+
+      let tx = await stanToken.lock(userAddress, vestingAmount, currentTimestamp + 86400 + 600 + 60 * 10 * i);
+      await tx.wait();
+      console.log(vestingAmount + " STAN is locked until " + new Date((currentTimestamp + 86400 + 600 + 60 * 10 * i) * 1000).toUTCString());
+    }
+
+    // 3일 후
+    console.log("3일 후");
+    for (let i = 0; i < 10; i++) {
+      console.log(i + "번째 vesting");
+
+      let tx = await stanToken.lock(userAddress, vestingAmount, currentTimestamp + 86400 * 2 + 600 + 60 * 10 * i);
+      await tx.wait();
+      console.log(vestingAmount + " STAN is locked until " + new Date((currentTimestamp + 86400 * 2 + 600 + 60 * 10 * i) * 1000).toUTCString());
+    }
+
+
+
 
     // // 1. vesting 추가
     // let vestingAmount = ethers.parseUnits("10", 18);
