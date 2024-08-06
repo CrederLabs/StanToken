@@ -8,7 +8,7 @@
     "clean": "rm -rf ./artifacts ./cache",
     "deploy": "NETWORK=local npx hardhat run scripts/deploy.js",
     "deploy:snowtrace": "NETWORK=snowtrace npx hardhat run scripts/deploy.js --network snowtrace",
-    "verify:snowtrace": "NETWORK=snowtrace npx hardhat verify --network snowtrace 0x...",
+    "verify:snowtrace": "NETWORK=snowtrace npx hardhat verify --network snowtrace [0x...input your contract address]",
     "addVesting": "NETWORK=local npx hardhat run scripts/addVesting.js",
     "addVesting:snowtrace": "NETWORK=snowtrace npx hardhat run scripts/addVesting.js --network snowtrace"
   },
