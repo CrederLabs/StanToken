@@ -221,8 +221,8 @@ describe("StanToken", function () {
             await time.increase(60 * 60 * 24 * 30 * 3);
 
             // release 실패
-            await expect(stanToken.release(userA.address)).to.be.revertedWith("No lock information.");
-            await expect(stanToken.release(userB.address)).to.be.revertedWith("No lock information.");
+            await expect(stanToken.release(userA.address)).to.be.revertedWith("No claimable tokens.");
+            await expect(stanToken.release(userB.address)).to.be.revertedWith("No claimable tokens.");
 
             await stanToken.release(userC.address);
             // userC 는 24개월 후 4000 STAN release
