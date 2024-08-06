@@ -83,6 +83,13 @@ contract StanToken is ERC20, Ownable, Pausable {
 
     mapping(address => ReleasedHistory[]) internal releasedHistory;
 
+    struct CancelHistory {
+        uint256 cancelTime;
+        uint256 balance;
+    }
+
+    mapping(address => CancelHistory[]) internal cancelHistory;
+
     // Remaining Tokens
     function remainingTokens(address _holder) public view returns (uint256) {
         uint256 total = 0;
@@ -119,6 +126,15 @@ contract StanToken is ERC20, Ownable, Pausable {
         require(_holder == msg.sender || msg.sender == owner(), "Only the holder can release the lock.");
         require(!blacklist[_holder], "The user is frozen");
         require(lockInfo[_holder].length > 0, "No lock information.");
+
+        // lockInfo[_holder].length 만큼 조회해서 전부 balance 가 0 이면 revert
+        uint256 total = 0;
+        for (uint256 i = 0; i < lockInfo[_holder].length; i++) {
+            if (lockInfo[_holder][i].balance == 0) {
+                total += 1;
+            }
+        }
+        require(total != lockInfo[_holder].length, "No claimable tokens.");
 
         for (uint256 i = 0; i < lockInfo[_holder].length; i++) {
             // releaseTime이 지났으면 수량을 전송
@@ -236,6 +252,31 @@ contract StanToken is ERC20, Ownable, Pausable {
         return (releaseTimes, balances);
     }
 
+    // cancelHistory
+    function cancelHistoryCount(address _holder) public view returns (uint256) {
+        return cancelHistory[_holder].length;
+    }
+
+    function cancelHistoryState(address _holder, uint256 _idx) public view returns (uint256, uint256) {
+        return (cancelHistory[_holder][_idx].cancelTime, cancelHistory[_holder][_idx].balance);
+    }
+
+    function cancelHistoryStates(address _holder) public view returns (CancelHistory[] memory) {
+        return cancelHistory[_holder];
+    }
+
+    function cancelHistoryStates2(address _holder) public view returns (uint256[] memory, uint256[] memory) {
+        uint256[] memory cancelTimes = new uint256[](cancelHistory[_holder].length);
+        uint256[] memory balances = new uint256[](cancelHistory[_holder].length);
+
+        for (uint256 i = 0; i < cancelHistory[_holder].length; i++) {
+            cancelTimes[i] = cancelHistory[_holder][i].cancelTime;
+            balances[i] = cancelHistory[_holder][i].balance;
+        }
+
+        return (cancelTimes, balances);
+    }
+
     // lockCount 와 releasedHistoryCount 정보를 합쳐서 Total Lock 수량을 return
     function totalLocks(address _holder) public view returns (uint256) {
         return lockInfo[_holder].length + releasedHistory[_holder].length;
@@ -285,12 +326,15 @@ contract StanToken is ERC20, Ownable, Pausable {
         // 먼저 잔액이 충분한지 확인
         require(super.balanceOf(address(this)) >= amount, "STAN Balance is too small.");
 
-        lockInfo[_holder][i].balance = 0;   // 없어도 되는 코드... lockInfo[_holder].pop()에서 처리됨
+        lockInfo[_holder][i].balance = 0;
         
-        if (i != lockInfo[_holder].length - 1) {
-            lockInfo[_holder][i] = lockInfo[_holder][lockInfo[_holder].length - 1];
-        }
-        lockInfo[_holder].pop();
+        // if (i != lockInfo[_holder].length - 1) {
+        //     lockInfo[_holder][i] = lockInfo[_holder][lockInfo[_holder].length - 1];
+        // }
+        // lockInfo[_holder].pop();
+
+        
+
 
         // 취소 물량은 owner에게 전송(이미 this contract에게 전송되어 있음)
         // transferFrom(address(this), msg.sender, amount);
