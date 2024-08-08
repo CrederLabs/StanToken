@@ -47,14 +47,6 @@ contract StanToken is ERC20, Ownable, Pausable {
     }
 
     /* ========== ERC20 ========== */
-    // function balanceOf(address _holder) public view override returns (uint256) {
-    //     uint256 lockedBalance = 0;
-    //     for(uint256 i = 0; i < lockInfo[_holder].length ; i++ ) {
-    //         lockedBalance = lockedBalance + (lockInfo[_holder][i].balance);
-    //     }
-    //     return super.balanceOf(_holder) + lockedBalance;
-    // }
-
     function transfer(address sender, address recipient, uint256 amount) internal virtual whenNotPaused returns (bool) {
         require(!blacklist[sender] && !blacklist[recipient], "The user is frozen");
         super._transfer(sender, recipient, amount);
@@ -75,7 +67,6 @@ contract StanToken is ERC20, Ownable, Pausable {
 
     mapping(address => LockInfo[]) internal lockInfo;
 
-    // release 하면 히스토리 남기기 위한 구조체
     struct ReleasedHistory {
         uint256 releaseTime;
         uint256 balance;
@@ -159,36 +150,6 @@ contract StanToken is ERC20, Ownable, Pausable {
                 emit Claim(_holder, amount);
             }
         }
-
-
-        
-
-        // // 10개 중에서 6개 release time이 되었을 때 가정
-        // uint256 len = lockInfo[_holder].length;
-        // for (uint256 i = 0; i < len; i++) {
-        //     console.log(i, "th lock is released. release time:", lockInfo[_holder][i].releaseTime);
-        //     console.log("block.timestamp: ", block.timestamp);
-
-        //     if (lockInfo[_holder][i].releaseTime <= block.timestamp) {
-        //         uint256 amount = lockInfo[_holder][i].balance;
-        //         lockInfo[_holder][i].balance = 0;
-                
-        //         // i == 0
-        //         if (i != lockInfo[_holder].length - 1) {
-        //             lockInfo[_holder][i] = lockInfo[_holder][lockInfo[_holder].length - 1];
-        //         }
-        //         lockInfo[_holder].pop();
-                
-        //         // ReleasedHistory 추가
-        //         releasedHistory[_holder].push(
-        //             ReleasedHistory(block.timestamp, amount)
-        //         );
-
-        //         _transfer(address(this), _holder, amount);
-                
-        //         emit Claim(_holder, amount);
-        //     }
-        // }
     }
 
     function lockCount(address _holder) public view returns (uint256) {
@@ -327,19 +288,8 @@ contract StanToken is ERC20, Ownable, Pausable {
         require(super.balanceOf(address(this)) >= amount, "STAN Balance is too small.");
 
         lockInfo[_holder][i].balance = 0;
-        
-        // if (i != lockInfo[_holder].length - 1) {
-        //     lockInfo[_holder][i] = lockInfo[_holder][lockInfo[_holder].length - 1];
-        // }
-        // lockInfo[_holder].pop();
-
-        
-
 
         // 취소 물량은 owner에게 전송(이미 this contract에게 전송되어 있음)
-        // transferFrom(address(this), msg.sender, amount);
-        // this contract balance 에서 owner에게 전송
-        // transfer(address(this), msg.sender, amount);
         _transfer(address(this), msg.sender, amount);
 
         emit CancelLock(_holder, amount);
