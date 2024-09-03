@@ -90,7 +90,7 @@ contract StanToken is ERC20, Ownable, Pausable {
         return total;
     }
 
-    // lock 된 정보 중 releaseTime이 지난 정보를 return (즉, Claim 가능한 수량)
+    // Return information from locked data where the releaseTime has passed (i.e., the amount that can be claimed).
     function claimableTokens(address _holder) public view returns (uint256) {
         uint256 total = 0;
         if (lockInfo[_holder].length > 0) {
@@ -103,7 +103,7 @@ contract StanToken is ERC20, Ownable, Pausable {
         return total;
     }
 
-    // 지금까지 claim 된 수량을 return
+    // Return the amount that has been claimed so far.
     function claimedTokens(address _holder) public view returns (uint256) {
         uint256 total = 0;
         for (uint256 i = 0; i < releasedHistory[_holder].length; i++) {
@@ -112,13 +112,13 @@ contract StanToken is ERC20, Ownable, Pausable {
         return total;
     }
 
-    // msg.sender 한테 lock 된 정보가 있으면 releaseTime이 지났는지 확인하고 지났으면 수량을 전송
+    // Check if there is any locked information for `msg.sender`. If there is and the `releaseTime` has passed, transfer the amount to `msg.sender`.
     function release(address _holder) external whenNotPaused nonReentrant {
         require(_holder == msg.sender || msg.sender == owner(), "Only the holder can release the lock.");
         require(!blacklist[_holder], "The user is frozen");
         require(lockInfo[_holder].length > 0, "No lock information.");
 
-        // lockInfo[_holder].length 만큼 조회해서 전부 balance 가 0 이면 revert
+        // Check all entries in `lockInfo[_holder]` by iterating through its length. If all balances are 0, revert the transaction.
         uint256 total = 0;
         for (uint256 i = 0; i < lockInfo[_holder].length; i++) {
             if (lockInfo[_holder][i].balance == 0) {
@@ -128,10 +128,10 @@ contract StanToken is ERC20, Ownable, Pausable {
         require(total != lockInfo[_holder].length, "No claimable tokens.");
 
         for (uint256 i = 0; i < lockInfo[_holder].length; i++) {
-            // releaseTime이 지났으면 수량을 전송
-            // lockInfo는 releaseTime이 지난 것은 삭제하지 않고 balance만 0으로 처리
+            // Send the quantity if the release time has passed.
+            // For `lockInfo`, do not delete entries where the `releaseTime` has passed; instead, set the `balance` to 0.
 
-            // balance가 0이면 이미 release 된 것이므로 skip
+            // If the `balance` is 0, it indicates that the amount has already been released, so skip that entry.
             if (lockInfo[_holder][i].balance == 0) {
                 continue;
             }
@@ -140,7 +140,7 @@ contract StanToken is ERC20, Ownable, Pausable {
                 uint256 amount = lockInfo[_holder][i].balance;
                 lockInfo[_holder][i].balance = 0;
 
-                // ReleasedHistory 추가
+                // Add the entry to `ReleasedHistory`.
                 releasedHistory[_holder].push(
                     ReleasedHistory(block.timestamp, amount)
                 );
@@ -161,16 +161,6 @@ contract StanToken is ERC20, Ownable, Pausable {
         console.log(lockInfo[_holder][_idx].balance);
 
         return (lockInfo[_holder][_idx].releaseTime, lockInfo[_holder][_idx].balance);
-    }
-
-    function consoleLine() public pure returns (string memory) {
-        console.log("====================");
-        return "====================";
-    }
-
-    function log(string memory _log) public pure returns (string memory) {
-        console.log(_log);
-        return _log;
     }
 
     function lockStates(address _holder) public view returns (LockInfo[] memory) {
@@ -238,12 +228,12 @@ contract StanToken is ERC20, Ownable, Pausable {
         return (cancelTimes, balances);
     }
 
-    // lockCount 와 releasedHistoryCount 정보를 합쳐서 Total Lock 수량을 return
+    // Combine the `lockCount` and `releasedHistoryCount` to return the total locked quantity.
     function totalLocks(address _holder) public view returns (uint256) {
         return lockInfo[_holder].length + releasedHistory[_holder].length;
     }
 
-    // lockInfo 와 releasedHistory 정보를 합쳐서 Total Vested Tokens 수량을 return
+    // Combine the `lockInfo` and `releasedHistory` data to return the total amount of vested tokens.
     function totalVestedTokens(address _holder) public view returns (uint256) {
         uint256 total = 0;
         for (uint256 i = 0; i < lockInfo[_holder].length; i++) {
@@ -255,8 +245,10 @@ contract StanToken is ERC20, Ownable, Pausable {
         return total;
     }
 
-    // lock: owner 가 가지고 있던 STAN 수량을 STAN contract에게 전송하고, lock 정보를 추가(유저, 수량, releaseTime)
-    // releaseTime이 되면 해당 유저는 lock 정보를 통해 STAN 수량을 받을 수 있음
+    // For the lock function:
+    //     1. The owner transfers a specified amount of STAN tokens they hold to the STAN contract.
+    //     2. Add lock information, including the user address, the amount, and the `releaseTime`.
+    // When the `releaseTime` is reached, the user can claim the STAN tokens based on the lock information.
     function lock(address _to, uint256 _amount, uint256 _releaseTime) public onlyOwner {
         require(super.balanceOf(msg.sender) >= _amount, "Balance is too small.");
         require(_releaseTime > block.timestamp, "Release time should be in the future");
@@ -278,18 +270,19 @@ contract StanToken is ERC20, Ownable, Pausable {
         emit Lock(_to, _amount, block.timestamp + _afterTime);
     }
 
-    // unlock: lock 된 정보를 해제하고 STAN 수량을 다시 owner에게 전송 (vesting 취소 시 사용)
+    // For the unlock function:
+    //     1. Unlock the locked information.
+    //     2. Transfer the STAN tokens back to the owner. (This is used when the vesting is canceled.)
     function cancelLock(address _holder, uint256 i) public onlyOwner {
         require(i < lockInfo[_holder].length, "No lock information.");
 
         uint256 amount = lockInfo[_holder][i].balance;
 
-        // 먼저 잔액이 충분한지 확인
         require(super.balanceOf(address(this)) >= amount, "STAN Balance is too small.");
 
         lockInfo[_holder][i].balance = 0;
 
-        // 취소 물량은 owner에게 전송(이미 this contract에게 전송되어 있음)
+        // The canceled amount is transferred back to the owner (since it has already been transferred to this contract).
         _transfer(address(this), msg.sender, amount);
 
         emit CancelLock(_holder, amount);
