@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-// Uncomment this line to use console.log
-import "hardhat/console.sol";
-
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/Pausable.sol";
@@ -157,9 +154,6 @@ contract StanToken is ERC20, Ownable, Pausable {
     }
 
     function lockState(address _holder, uint256 _idx) public view returns (uint256, uint256) {
-        console.log(lockInfo[_holder][_idx].releaseTime);
-        console.log(lockInfo[_holder][_idx].balance);
-
         return (lockInfo[_holder][_idx].releaseTime, lockInfo[_holder][_idx].balance);
     }
 
@@ -309,7 +303,6 @@ contract StanToken is ERC20, Ownable, Pausable {
     /* ========== EVENTS ========== */
     event Frozen(address indexed who);
     event Unfrozen(address indexed who);
-
     event Lock(address indexed holder, uint256 value, uint256 releaseTime);
     event CancelLock(address indexed holder, uint256 value);
     event Claim(address indexed holder, uint256 value);
