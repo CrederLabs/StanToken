@@ -14,13 +14,12 @@ contract StanToken is ERC20, Ownable, Pausable {
     /* ========== ReentrancyGuard ========== */
     mapping (address => bool) private _locks;
 
-    modifier nonReentrant {
-        require(_locks[msg.sender] != true, "ReentrancyGuard: reentrant call");
+    modifier nonReentrantDirect() {
+        require(msg.sender == tx.origin, "Direct calls only");
+        require(!_locks[msg.sender], "ReentrancyGuard: reentrant call");
 
         _locks[msg.sender] = true;
-
         _;
-    
         _locks[msg.sender] = false;
     }
 
@@ -110,7 +109,7 @@ contract StanToken is ERC20, Ownable, Pausable {
     }
 
     // Check if there is any locked information for `msg.sender`. If there is and the `releaseTime` has passed, transfer the amount to `msg.sender`.
-    function release(address _holder) external whenNotPaused nonReentrant {
+    function release(address _holder) external whenNotPaused nonReentrantDirect {
         require(_holder == msg.sender || msg.sender == owner(), "Only the holder can release the lock.");
         require(!blacklist[_holder], "The user is frozen");
         require(lockInfo[_holder].length > 0, "No lock information.");
