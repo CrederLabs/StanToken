@@ -271,6 +271,7 @@ contract StanToken is ERC20, Ownable, Pausable {
         require(i < lockInfo[_holder].length, "No lock information.");
 
         uint256 amount = lockInfo[_holder][i].balance;
+        require(amount > 0, "No locked tokens.");
 
         require(super.balanceOf(address(this)) >= amount, "STAN Balance is too small.");
 
