@@ -4,13 +4,24 @@ pragma solidity ^0.8.24;
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/utils/Pausable.sol";
 
-contract StanToken is ERC20, Ownable, Pausable {
+contract StanToken is ERC20, Ownable, AccessControl, Pausable {
     using SafeERC20 for IERC20;
+
+    bytes32 public constant BLACKLIST_MANAGER_ROLE = keccak256("BLACKLIST_MANAGER_ROLE");
+    bytes32 public constant LOCK_MANAGER_ROLE = keccak256("LOCK_MANAGER_ROLE");
+    bytes32 public constant RECOVERY_MANAGER_ROLE = keccak256("RECOVERY_MANAGER_ROLE");
 
     constructor() Ownable(msg.sender) ERC20("Station Token", "STAN") {
         _mint(msg.sender, 1000000000 * 10**uint(decimals()));
+
+        // Grant roles to the owner
+        _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
+        _grantRole(BLACKLIST_MANAGER_ROLE, msg.sender);
+        _grantRole(LOCK_MANAGER_ROLE, msg.sender);
+        _grantRole(RECOVERY_MANAGER_ROLE, msg.sender);
     }
 
     /* ========== ReentrancyGuard ========== */
@@ -28,13 +39,13 @@ contract StanToken is ERC20, Ownable, Pausable {
     /* ========== Freezable ========== */
     mapping(address => bool) blacklist;
 
-    function freeze(address who) public onlyOwner {
+    function freeze(address who) public onlyRole(BLACKLIST_MANAGER_ROLE) {
         blacklist[who] = true;
         
         emit Frozen(who);
     }
 
-    function unfreeze(address who) public onlyOwner {
+    function unfreeze(address who) public onlyRole(BLACKLIST_MANAGER_ROLE) {
         blacklist[who] = false;
         
         emit Unfrozen(who);
@@ -239,7 +250,7 @@ contract StanToken is ERC20, Ownable, Pausable {
     //     1. The owner transfers a specified amount of STAN tokens they hold to the STAN contract.
     //     2. Add lock information, including the user address, the amount, and the `releaseTime`.
     // When the `releaseTime` is reached, the user can claim the STAN tokens based on the lock information.
-    function lock(address _to, uint256 _amount, uint256 _releaseTime) public onlyOwner {
+    function lock(address _to, uint256 _amount, uint256 _releaseTime) public onlyRole(LOCK_MANAGER_ROLE) {
         require(super.balanceOf(msg.sender) >= _amount, "Balance is too small.");
         require(_releaseTime > block.timestamp, "Release time should be in the future");
         
@@ -250,7 +261,7 @@ contract StanToken is ERC20, Ownable, Pausable {
         emit Lock(_to, _amount, _releaseTime);
     }
 
-    function lockAfter(address _to, uint256 _amount, uint256 _afterTime) public onlyOwner {
+    function lockAfter(address _to, uint256 _amount, uint256 _afterTime) public onlyRole(LOCK_MANAGER_ROLE) {
         require(super.balanceOf(msg.sender) >= _amount, "Balance is too small.");
 
         transferFrom(msg.sender, address(this), _amount);
@@ -263,7 +274,7 @@ contract StanToken is ERC20, Ownable, Pausable {
     // For the unlock function:
     //     1. Unlock the locked information.
     //     2. Transfer the STAN tokens back to the owner. (This is used when the vesting is canceled.)
-    function cancelLock(address _holder, uint256 i) public onlyOwner {
+    function cancelLock(address _holder, uint256 i) public onlyRole(LOCK_MANAGER_ROLE) nonReentrantDirect {
         require(i < lockInfo[_holder].length, "No lock information.");
 
         uint256 amount = lockInfo[_holder][i].balance;
@@ -291,11 +302,11 @@ contract StanToken is ERC20, Ownable, Pausable {
     }
 
     /* ========== Recovery ========== */
-    function recoverERC20(address tokenAddress, uint256 tokenAmount) public onlyOwner {
+    function recoverERC20(address tokenAddress, uint256 tokenAmount) public onlyRole(RECOVERY_MANAGER_ROLE) {
         IERC20(tokenAddress).safeTransfer(owner(), tokenAmount);
     }
 
-    function recoverETH(uint256 amount) public onlyOwner {
+    function recoverETH(uint256 amount) public onlyRole(RECOVERY_MANAGER_ROLE) {
         payable(owner()).transfer(amount);
     }
 
