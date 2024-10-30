@@ -2,10 +2,12 @@
 pragma solidity ^0.8.24;
 
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/Pausable.sol";
 
 contract StanToken is ERC20, Ownable, Pausable {
+    using SafeERC20 for IERC20;
 
     constructor() Ownable(msg.sender) ERC20("Station Token", "STAN") {
         _mint(msg.sender, 1000000000 * 10**uint(decimals()));
@@ -293,7 +295,7 @@ contract StanToken is ERC20, Ownable, Pausable {
 
     /* ========== Recovery ========== */
     function recoverERC20(address tokenAddress, uint256 tokenAmount) public onlyOwner {
-        IERC20(tokenAddress).transfer(owner(), tokenAmount);
+        IERC20(tokenAddress).safeTransfer(owner(), tokenAmount);
     }
 
     function recoverETH(uint256 amount) public onlyOwner {
