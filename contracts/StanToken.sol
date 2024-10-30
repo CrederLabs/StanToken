@@ -273,6 +273,8 @@ contract StanToken is ERC20, Ownable, Pausable {
 
         lockInfo[_holder][i].balance = 0;
 
+        cancelHistory[_holder].push(CancelHistory(block.timestamp, amount));
+
         // The canceled amount is transferred back to the owner (since it has already been transferred to this contract).
         _transfer(address(this), msg.sender, amount);
 
