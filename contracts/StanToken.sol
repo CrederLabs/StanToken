@@ -44,17 +44,12 @@ contract StanToken is ERC20, Ownable, Pausable {
         return blacklist[who];
     }
 
-    /* ========== ERC20 ========== */
-    function transfer(address sender, address recipient, uint256 amount) internal virtual whenNotPaused returns (bool) {
-        require(!blacklist[sender] && !blacklist[recipient], "The user is frozen");
+    /* ========== Transfer Overrides ========== */
+    // it need to add 'virtual' to ERC20's _transfer function
+    function _transfer(address sender, address recipient, uint256 amount) internal override {
+        require(!paused(), "Token transfer while paused");
+        require(!blacklist[sender] && !blacklist[recipient], "Sender or recipient is frozen");
         super._transfer(sender, recipient, amount);
-        return true;
-    }
-
-    function transferFrom(address sender, address recipient, uint256 amount) public virtual override whenNotPaused returns (bool) {
-        require(!blacklist[sender] && !blacklist[recipient], "The user is frozen");
-        super.transferFrom(sender, recipient, amount);
-        return true;
     }
 
     /* ========== Vesting ========== */
