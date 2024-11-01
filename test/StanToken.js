@@ -1,5 +1,6 @@
 const {
     time,
+    mine,
     loadFixture,
 } = require("@nomicfoundation/hardhat-toolbox/network-helpers");
 const { anyValue } = require("@nomicfoundation/hardhat-chai-matchers/withArgs");
@@ -11,19 +12,19 @@ describe("StanToken", function () {
     // and reset Hardhat Network to that snapshot in every test.
     async function deployFixture() {
         // Contracts are deployed using the first signer/account by default
-        const [owner, otherAccount, userA, userB, userC] = await ethers.getSigners();
+        const [owner, otherAccount, userA, userB, userC, signer2, signer3] = await ethers.getSigners();
 
         const StanToken = await ethers.getContractFactory("StanToken");
         const stanToken = await StanToken.deploy();
 
-        return { stanToken, owner, otherAccount, userA, userB, userC };
+        return { stanToken, owner, otherAccount, userA, userB, userC, signer2, signer3 };
     }
 
     describe("Deployment", function () {
-        it("Should set the right owner", async function () {
+        it("Should set the signer", async function () {
             const { stanToken, owner } = await loadFixture(deployFixture);
 
-            expect(await stanToken.owner()).to.equal(owner.address);
+            expect(await stanToken.isSigner(owner.address)).to.equal(true);
         });
     });
 
@@ -144,9 +145,9 @@ describe("StanToken", function () {
             await stanToken.lock(userC.address, "4000000000000000000000", currentTimestamp + 60 * 60 * 24 * 30 * 24);
 
             await time.increase(60 * 60 * 24 * 30 * 3);
-            await stanToken.cancelLock(userA.address, 0);
-            await stanToken.cancelLock(userB.address, 0);
-            await stanToken.cancelLock(userC.address, 0);
+            await stanToken.cancelLock(userA.address, 0, owner.address);
+            await stanToken.cancelLock(userB.address, 0, owner.address);
+            await stanToken.cancelLock(userC.address, 0, owner.address);
 
             await time.increase(60 * 60 * 24 * 30 * 3);
 
@@ -164,6 +165,68 @@ describe("StanToken", function () {
             await stanToken.release(userC.address);
 
             expect(await stanToken.balanceOf(userC.address)).to.equal("4000000000000000000000");
+        });
+    });
+
+    describe("multisig", function () {
+        it("Should lock tokens for the users' with confirmSignature", async function () {
+            const { stanToken, owner, userA, signer2, signer3 } = await loadFixture(deployFixture);
+
+            // When attempting to add a signer that has already been added
+            await expect(stanToken.addSigner(owner.address)).to.revertedWith("Already added");
+
+            // Adding two signers (this will require confirmation from at least two signers to execute the function).
+            await stanToken.addSigner(signer2.address);
+            await stanToken.addSigner(signer3.address);
+
+            await stanToken.approve(owner.address, "100000000000000000000");
+
+            expect(await stanToken.lockCount(userA.address)).to.equal(0);
+
+            let timestamp = await time.latest();
+            await stanToken.lock(userA.address, "100000000000000000000", timestamp + 600 * 1);
+
+            // Lock quantity check: Not yet executed as it has not reached the majority.
+            expect(await stanToken.lockCount(userA.address)).to.equal(0);
+
+            await stanToken.connect(signer2).lock(userA.address, "100000000000000000000", timestamp + 600 * 1);
+
+            // Executed as it has exceeded the majority.
+            expect(await stanToken.lockCount(userA.address)).to.equal(1);
+
+            await time.increase(600 * 6 + 60);
+
+            expect(await stanToken.balanceOf(userA.address)).to.equal("0");
+
+            await stanToken.release(userA.address);
+
+            expect(await stanToken.balanceOf(userA.address)).to.equal("100000000000000000000");
+        });
+
+        it("Should remove signers", async function () {
+            const { stanToken, owner, userA, signer2, signer3 } = await loadFixture(deployFixture);
+
+            await stanToken.addSigner(signer2.address);
+            await stanToken.addSigner(signer3.address);
+
+            expect(await stanToken.signersLength()).to.equal(3);
+
+            await stanToken.removeSigner(signer2.address);
+            expect(await stanToken.signersLength()).to.equal(3);
+            await stanToken.connect(signer2).removeSigner(signer2.address);
+
+            expect(await stanToken.signersLength()).to.equal(2);
+        });
+
+        // Check if the `nonce` increments when the block number exceeds 100,000.
+        it("Should increase nonce by increasing block number", async function () {
+            const { stanToken } = await loadFixture(deployFixture);
+
+            expect(await stanToken.currentNonce()).to.equal(0);
+
+            await mine(100000);
+
+            expect(await stanToken.currentNonce()).to.equal(1);
         });
     });
 });
