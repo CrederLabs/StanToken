@@ -179,6 +179,8 @@ describe("StanToken", function () {
             await stanToken.addSigner(signer2.address);
             await stanToken.addSigner(signer3.address);
 
+            expect(await stanToken.signersLength()).to.equal(3);
+
             await stanToken.approve(owner.address, "100000000000000000000");
 
             expect(await stanToken.lockCount(userA.address)).to.equal(0);
@@ -228,6 +230,33 @@ describe("StanToken", function () {
 
             expect(await stanToken.currentNonce()).to.equal(1);
         });
+
+        it("Should cancel and refund lock token", async function () {
+            const { stanToken, owner, userA, signer2, signer3 } = await loadFixture(deployFixture);
+
+            // Adding two signers (this will require confirmation from at least two signers to execute the function).
+            await stanToken.addSigner(signer2.address);
+            await stanToken.addSigner(signer3.address);
+
+            let count = await stanToken.getTransactionRequestHistoryCount();
+            expect(count).to.equal(2);
+
+            await stanToken.approve(owner.address, "100000000000000000000");
+            
+            expect(await stanToken.balanceOf(owner.address)).to.equal("1000000000000000000000000000");
+
+            let timestamp = await time.latest();
+            await stanToken.lock(userA.address, "100000000000000000000", timestamp + 600 * 1);
+
+            let uuidsLength = await stanToken.getUuidsCount();
+            let uuid = await stanToken.getUuids(parseInt(uuidsLength) - 1);
+
+            
+            expect(await stanToken.balanceOf(owner.address)).to.equal("999999900000000000000000000");
+
+            await stanToken.cancelSignature(uuid);
+
+            expect(await stanToken.balanceOf(owner.address)).to.equal("1000000000000000000000000000");
+        });
     });
 });
-  

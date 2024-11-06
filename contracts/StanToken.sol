@@ -38,6 +38,10 @@ contract StanToken is ERC20, Pausable {
 
     TransactionRequestHistory[] public transactionRequestHistory;
 
+    bytes32[] public uuids;
+
+    mapping (bytes32 => mapping (address => uint256)) tempLockAmount;
+
     constructor() ERC20("Station Token", "STAN") {
         _mint(msg.sender, 1000000000 * 10**uint(decimals()));
         
@@ -167,7 +171,7 @@ contract StanToken is ERC20, Pausable {
 
     /* ========== Signature ========== */
     function confirmSignature(string memory functionName, address address1, address address2, uint256 number1, uint256 number2) internal returns (bool) {
-        bytes32 uuid = keccak256(abi.encodePacked(currentNonce(), functionName, address1, address2, number1, number2));
+        bytes32 uuid = convertUuid(currentNonce(), functionName, address1, address2, number1, number2);
         TransactionRequest storage request = transactionRequests[uuid];
 
         if (request.proposer == address(0)) {
@@ -176,6 +180,7 @@ contract StanToken is ERC20, Pausable {
                 keccak256(abi.encodePacked(functionName)) == keccak256(abi.encodePacked("lockAfter"))) {
                 require(super.balanceOf(msg.sender) >= number1, "Balance is too small.");
                 transferFrom(msg.sender, address(this), number1);
+                tempLockAmount[uuid][msg.sender] = number1;
             }
 
             request.proposer = msg.sender;
@@ -187,7 +192,9 @@ contract StanToken is ERC20, Pausable {
         }
 
         request.confirmedBy[msg.sender] = true;
-        emit SignatureConfirmed(functionName, address1, address2, number1, number2, msg.sender);
+        // 모든 uuid 는 기록 되어야 한다.
+        uuids.push(uuid);
+        emit SignatureConfirmed(uuid, functionName, address1, address2, number1, number2, msg.sender);
 
         uint256 confirmedCount = 0;
         for (uint256 i = 0; i < signers.length; i++) {
@@ -196,7 +203,7 @@ contract StanToken is ERC20, Pausable {
             }
         }
 
-        if (confirmedCount >= confirmThreshold()) {
+        if (confirmedCount == confirmThreshold()) {
             transactionRequestHistory.push(
                 TransactionRequestHistory(uuid, request.proposer, request.functionName, request.address1, request.address2, request.number1, request.number2)
             );
@@ -207,20 +214,43 @@ contract StanToken is ERC20, Pausable {
         }
     }
 
-    function getUuid(uint256 blockNumber, string memory functionName, address address1, address address2, uint256 number1, uint256 number2) public view returns (bytes32) {
+    function cancelSignature(bytes32 uuid) external onlySigner nonReentrantDirect {
+        TransactionRequest storage request = transactionRequests[uuid];
+        require(request.proposer == msg.sender, "Only proposer can cancel the transaction request.");
+        
+        if (keccak256(abi.encodePacked(request.functionName)) == keccak256(abi.encodePacked("lock")) || 
+            keccak256(abi.encodePacked(request.functionName)) == keccak256(abi.encodePacked("lockAfter"))) {
+            if (tempLockAmount[uuid][msg.sender] > 0) {
+                IERC20(address(this)).safeTransfer(msg.sender, tempLockAmount[uuid][msg.sender]);
+                delete tempLockAmount[uuid][msg.sender];
+            }
+        }
+
+        delete transactionRequests[uuid];
+    }
+
+    function getUuidsCount() public view returns (uint256) {
+        return uuids.length;
+    }
+
+    function getUuids(uint256 _idx) public view returns (bytes32) {
+        return uuids[_idx];
+    }
+
+    function convertUuid(uint256 blockNumber, string memory functionName, address address1, address address2, uint256 number1, uint256 number2) public view returns (bytes32) {
         return keccak256(abi.encodePacked(getNonce(blockNumber), functionName, address1, address2, number1, number2));
     }
     
-    function transactionRequestState(bytes32 uuid) public view returns (address, string memory, address, address, uint256, uint256) {
+    function getTransactionRequestState(bytes32 uuid) public view returns (address, string memory, address, address, uint256, uint256) {
         TransactionRequest storage request = transactionRequests[uuid];
         return (request.proposer, request.functionName, request.address1, request.address2, request.number1, request.number2);
     }
 
-    function transactionRequestHistoryCount() public view returns (uint256) {
+    function getTransactionRequestHistoryCount() public view returns (uint256) {
         return transactionRequestHistory.length;
     }
 
-    function transactionRequestHistoryState(uint256 _idx) public view returns (bytes32, address, string memory, address, address, uint256, uint256) {
+    function getTransactionRequestHistoryState(uint256 _idx) public view returns (bytes32, address, string memory, address, address, uint256, uint256) {
         TransactionRequestHistory storage history = transactionRequestHistory[_idx];
         return (history.uuid, history.proposer, history.functionName, history.address1, history.address2, history.number1, history.number2);
     }
@@ -456,7 +486,6 @@ contract StanToken is ERC20, Pausable {
 
         if (!confirmSignature("lock", _to, address(0), _amount, _releaseTime)) return;
         
-        // transferFrom(msg.sender, address(this), _amount);
         lockInfo[_to].push(
             LockInfo(_releaseTime, _amount)
         );
@@ -468,7 +497,6 @@ contract StanToken is ERC20, Pausable {
 
         if (!confirmSignature("lockAfter", _to, address(0), _amount, _afterTime)) return;
 
-        // transferFrom(msg.sender, address(this), _amount);
         lockInfo[_to].push(
             LockInfo(block.timestamp + _afterTime, _amount)
         );
@@ -529,7 +557,7 @@ contract StanToken is ERC20, Pausable {
     event Lock(address indexed holder, uint256 value, uint256 releaseTime);
     event CancelLock(address indexed holder, uint256 value);
     event Claim(address indexed holder, uint256 value);
-    event SignatureConfirmed(string functionName, address address1, address address2, uint256 number1, uint256 number2, address indexed signer);
+    event SignatureConfirmed(bytes32 uuid, string functionName, address address1, address address2, uint256 number1, uint256 number2, address indexed signer);
     event SignerAdded(address indexed signer);
     event SignerRemoved(address indexed signer);
     event SetBlockInterval(uint256 blockInterval);
