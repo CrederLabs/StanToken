@@ -189,11 +189,11 @@ contract StanToken is ERC20, Pausable {
             request.address2 = address2;
             request.number1 = number1;
             request.number2 = number2;
+            
+            uuids.push(uuid);
         }
 
         request.confirmedBy[msg.sender] = true;
-        // 모든 uuid 는 기록 되어야 한다.
-        uuids.push(uuid);
         emit SignatureConfirmed(uuid, functionName, address1, address2, number1, number2, msg.sender);
 
         uint256 confirmedCount = 0;
@@ -208,6 +208,16 @@ contract StanToken is ERC20, Pausable {
                 TransactionRequestHistory(uuid, request.proposer, request.functionName, request.address1, request.address2, request.number1, request.number2)
             );
             delete transactionRequests[uuid];
+
+            // delete uuid
+            for (uint256 i = 0; i < uuids.length; i++) {
+                if (uuids[i] == uuid) {
+                    uuids[i] = uuids[uuids.length - 1];
+                    uuids.pop();
+                    break;
+                }
+            }
+
             return true;
         } else {
             return false;
