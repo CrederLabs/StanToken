@@ -20,6 +20,7 @@ contract StanToken is ERC20, Pausable {
         address address2;
         uint256 number1;
         uint256 number2;
+        uint256 timestamp;
         mapping (address => bool) confirmedBy;
     }
 
@@ -189,6 +190,7 @@ contract StanToken is ERC20, Pausable {
             request.address2 = address2;
             request.number1 = number1;
             request.number2 = number2;
+            request.timestamp = block.timestamp;
             
             uuids.push(uuid);
         }
@@ -251,9 +253,9 @@ contract StanToken is ERC20, Pausable {
         return keccak256(abi.encodePacked(getNonce(blockNumber), functionName, address1, address2, number1, number2));
     }
     
-    function getTransactionRequestState(bytes32 uuid) public view returns (address, string memory, address, address, uint256, uint256) {
+    function getTransactionRequestState(bytes32 uuid) public view returns (address, string memory, address, address, uint256, uint256, uint256) {
         TransactionRequest storage request = transactionRequests[uuid];
-        return (request.proposer, request.functionName, request.address1, request.address2, request.number1, request.number2);
+        return (request.proposer, request.functionName, request.address1, request.address2, request.number1, request.number2, request.timestamp);
     }
 
     function getTransactionRequestHistoryCount() public view returns (uint256) {
