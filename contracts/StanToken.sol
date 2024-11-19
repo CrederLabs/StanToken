@@ -493,7 +493,6 @@ contract StanToken is ERC20, Pausable {
     //     2. Add lock information, including the user address, the amount, and the `releaseTime`.
     // When the `releaseTime` is reached, the user can claim the STAN tokens based on the lock information.
     function lock(address _to, uint256 _amount, uint256 _releaseTime) public onlySigner {
-        // require(super.balanceOf(msg.sender) >= _amount, "Balance is too small.");
         require(_releaseTime > block.timestamp, "Release time should be in the future");
 
         if (!confirmSignature("lock", _to, address(0), _amount, _releaseTime)) return;
@@ -505,8 +504,6 @@ contract StanToken is ERC20, Pausable {
     }
 
     function lockAfter(address _to, uint256 _amount, uint256 _afterTime) public onlySigner {
-        require(super.balanceOf(msg.sender) >= _amount, "Balance is too small.");
-
         if (!confirmSignature("lockAfter", _to, address(0), _amount, _afterTime)) return;
 
         lockInfo[_to].push(
