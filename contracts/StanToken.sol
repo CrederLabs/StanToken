@@ -27,18 +27,6 @@ contract StanToken is ERC20, Pausable {
     // The data combined from the parameters entered by the user is converted to bytes and used as a UUID.
     mapping (bytes32 => TransactionRequest) public transactionRequests;
 
-    // struct TransactionRequestHistory {
-    //     bytes32 uuid;
-    //     address proposer;
-    //     string functionName;
-    //     address address1;
-    //     address address2;
-    //     uint256 number1;
-    //     uint256 number2;
-    // }
-
-    // TransactionRequestHistory[] public transactionRequestHistory;
-
     bytes32[] public uuids;
 
     mapping (bytes32 => mapping (address => uint256)) tempLockAmount;
@@ -184,6 +172,9 @@ contract StanToken is ERC20, Pausable {
                 require(super.balanceOf(msg.sender) >= number1, "Balance is too small.");
                 transferFrom(msg.sender, address(this), number1);
                 tempLockAmount[uuid][msg.sender] = number1;
+            } else if (keccak256(abi.encodePacked(functionName)) == keccak256(abi.encodePacked("cancelLock"))) {
+                require(number2 > 0, "No locked tokens.");
+                require(super.balanceOf(address(this)) >= number2, "STAN Balance is too small.");
             }
 
             request.proposer = msg.sender;
@@ -210,20 +201,6 @@ contract StanToken is ERC20, Pausable {
         }
 
         if (confirmedCount == confirmThreshold()) {
-            // transactionRequestHistory.push(
-            //     TransactionRequestHistory(uuid, request.proposer, request.functionName, request.address1, request.address2, request.number1, request.number2)
-            // );
-            // delete transactionRequests[uuid];
-
-            // // delete uuid
-            // for (uint256 i = 0; i < uuids.length; i++) {
-            //     if (uuids[i] == uuid) {
-            //         uuids[i] = uuids[uuids.length - 1];
-            //         uuids.pop();
-            //         break;
-            //     }
-            // }
-
             return true;
         } else {
             return false;
@@ -530,13 +507,12 @@ contract StanToken is ERC20, Pausable {
     //     2. Transfer the STAN tokens back to the owner. (This is used when the vesting is canceled.)
     function cancelLock(address _holder, uint256 i, address _receiver) public onlySigner nonReentrantDirect {
         require(i < lockInfo[_holder].length, "No lock information.");
-        uint256 amount = lockInfo[_holder][i].balance;
-        require(amount > 0, "No locked tokens.");
-        require(super.balanceOf(address(this)) >= amount, "STAN Balance is too small.");
         require(_receiver != address(0), "Invalid address");
 
-        if (!confirmSignature("cancelLock", _holder, _receiver, i, 0)) return;
-        
+        uint256 amount = lockInfo[_holder][i].balance;
+
+        if (!confirmSignature("cancelLock", _holder, _receiver, i, amount)) return;
+
         lockInfo[_holder][i].balance = 0;
 
         cancelHistory[_holder].push(CancelHistory(block.timestamp, amount));
