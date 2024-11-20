@@ -261,41 +261,29 @@ describe("StanToken", function () {
             expect(await stanToken.balanceOf(owner.address)).to.equal("1000000000000000000000000000");
         });
 
-        // it("Should lock tokens by 2 signers", async function () {
-        //     const { stanToken, owner, userA, signer2, signer3 } = await loadFixture(deployFixture);
+        // multisig cancelLock test
+        it("Should cancel the locked tokens by 3 signers", async function () {
+            const { stanToken, owner, userA, signer2, signer3 } = await loadFixture(deployFixture);
 
-        //     // When attempting to add a signer that has already been added
-        //     await expect(stanToken.addSigner(owner.address)).to.revertedWith("Already added");
+            await stanToken.addSigner(signer2.address);
+            await stanToken.addSigner(signer3.address);
 
-        //     // Adding two signers (this will require confirmation from at least two signers to execute the function).
-        //     await stanToken.addSigner(signer2.address);
+            stanToken.approve(owner.address, "10000000000000000000000");
 
-        //     expect(await stanToken.signersLength()).to.equal(2);
+            let currentTimestamp = await time.latest();
 
-        //     await stanToken.approve(owner.address, "100000000000000000000");
+            await stanToken.lock(userA.address, "1000000000000000000000", currentTimestamp + 60 * 60 * 24 * 30 * 6);
+            await stanToken.connect(signer2).lock(userA.address, "1000000000000000000000", currentTimestamp + 60 * 60 * 24 * 30 * 6);
+            await stanToken.connect(signer3).lock(userA.address, "1000000000000000000000", currentTimestamp + 60 * 60 * 24 * 30 * 6);
 
-        //     expect(await stanToken.lockCount(userA.address)).to.equal(0);
+            await time.increase(60 * 60 * 24 * 30 * 3);
+            await stanToken.cancelLock(userA.address, 0, owner.address);
+            await stanToken.connect(signer2).cancelLock(userA.address, 0, owner.address);
+            await stanToken.connect(signer3).cancelLock(userA.address, 0, owner.address);
 
-        //     let timestamp = await time.latest();
-        //     await stanToken.lock(userA.address, "100000000000000000000", timestamp + 600 * 1);
+            await time.increase(60 * 60 * 24 * 30 * 3);
 
-        //     // Lock quantity check: Not yet executed as it has not reached the majority.
-        //     expect(await stanToken.lockCount(userA.address)).to.equal(1);
-
-        //     await stanToken.connect(signer2).lock(userA.address, "100000000000000000000", timestamp + 600 * 1);
-
-        //     // Executed as it has exceeded the majority.
-        //     expect(await stanToken.lockCount(userA.address)).to.equal(1);
-
-        //     await time.increase(600 * 6 + 60);
-
-        //     expect(await stanToken.balanceOf(userA.address)).to.equal("0");
-
-        //     await stanToken.release(userA.address);
-
-        //     expect(await stanToken.balanceOf(userA.address)).to.equal("100000000000000000000");
-        // });
-
-
+            await expect(stanToken.release(userA.address)).to.be.revertedWith("No claimable tokens.");
+        });
     });
 });

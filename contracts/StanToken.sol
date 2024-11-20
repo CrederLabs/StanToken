@@ -173,8 +173,9 @@ contract StanToken is ERC20, Pausable {
                 transferFrom(msg.sender, address(this), number1);
                 tempLockAmount[uuid][msg.sender] = number1;
             } else if (keccak256(abi.encodePacked(functionName)) == keccak256(abi.encodePacked("cancelLock"))) {
-                require(number2 > 0, "No locked tokens.");
-                require(super.balanceOf(address(this)) >= number2, "STAN Balance is too small.");
+                uint256 amount = lockInfo[address1][number1].balance;
+                require(amount > 0, "No locked tokens.");
+                require(super.balanceOf(address(this)) >= amount, "STAN Balance is too small.");
             }
 
             request.proposer = msg.sender;
@@ -509,10 +510,11 @@ contract StanToken is ERC20, Pausable {
         require(i < lockInfo[_holder].length, "No lock information.");
         require(_receiver != address(0), "Invalid address");
 
+        
+
+        if (!confirmSignature("cancelLock", _holder, _receiver, i, 0)) return;
+
         uint256 amount = lockInfo[_holder][i].balance;
-
-        if (!confirmSignature("cancelLock", _holder, _receiver, i, amount)) return;
-
         lockInfo[_holder][i].balance = 0;
 
         cancelHistory[_holder].push(CancelHistory(block.timestamp, amount));
