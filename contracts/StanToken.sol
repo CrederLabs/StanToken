@@ -27,21 +27,23 @@ contract StanToken is ERC20, Pausable {
     // The data combined from the parameters entered by the user is converted to bytes and used as a UUID.
     mapping (bytes32 => TransactionRequest) public transactionRequests;
 
-    struct TransactionRequestHistory {
-        bytes32 uuid;
-        address proposer;
-        string functionName;
-        address address1;
-        address address2;
-        uint256 number1;
-        uint256 number2;
-    }
+    // struct TransactionRequestHistory {
+    //     bytes32 uuid;
+    //     address proposer;
+    //     string functionName;
+    //     address address1;
+    //     address address2;
+    //     uint256 number1;
+    //     uint256 number2;
+    // }
 
-    TransactionRequestHistory[] public transactionRequestHistory;
+    // TransactionRequestHistory[] public transactionRequestHistory;
 
     bytes32[] public uuids;
 
     mapping (bytes32 => mapping (address => uint256)) tempLockAmount;
+
+    mapping (bytes32 => mapping (address => bool)) public confirmedBySigner;
 
     constructor() ERC20("Station Token", "STAN") {
         _mint(msg.sender, 1000000000 * 10**uint(decimals()));
@@ -195,7 +197,9 @@ contract StanToken is ERC20, Pausable {
             uuids.push(uuid);
         }
 
+        require(!request.confirmedBy[msg.sender], "Already confirmed");
         request.confirmedBy[msg.sender] = true;
+        confirmedBySigner[uuid][msg.sender] = true;
         emit SignatureConfirmed(uuid, functionName, address1, address2, number1, number2, msg.sender);
 
         uint256 confirmedCount = 0;
@@ -206,19 +210,19 @@ contract StanToken is ERC20, Pausable {
         }
 
         if (confirmedCount == confirmThreshold()) {
-            transactionRequestHistory.push(
-                TransactionRequestHistory(uuid, request.proposer, request.functionName, request.address1, request.address2, request.number1, request.number2)
-            );
-            delete transactionRequests[uuid];
+            // transactionRequestHistory.push(
+            //     TransactionRequestHistory(uuid, request.proposer, request.functionName, request.address1, request.address2, request.number1, request.number2)
+            // );
+            // delete transactionRequests[uuid];
 
-            // delete uuid
-            for (uint256 i = 0; i < uuids.length; i++) {
-                if (uuids[i] == uuid) {
-                    uuids[i] = uuids[uuids.length - 1];
-                    uuids.pop();
-                    break;
-                }
-            }
+            // // delete uuid
+            // for (uint256 i = 0; i < uuids.length; i++) {
+            //     if (uuids[i] == uuid) {
+            //         uuids[i] = uuids[uuids.length - 1];
+            //         uuids.pop();
+            //         break;
+            //     }
+            // }
 
             return true;
         } else {
@@ -241,6 +245,9 @@ contract StanToken is ERC20, Pausable {
         delete transactionRequests[uuid];
     }
 
+    // TransactionRequest storage request = transactionRequests[uuid]; 을 uuid로 조회하는 함수 
+    // function getTransactionRequestState(uuid);
+
     function getUuidsCount() public view returns (uint256) {
         return uuids.length;
     }
@@ -258,13 +265,19 @@ contract StanToken is ERC20, Pausable {
         return (request.proposer, request.functionName, request.address1, request.address2, request.number1, request.number2, request.timestamp);
     }
 
-    function getTransactionRequestHistoryCount() public view returns (uint256) {
-        return transactionRequestHistory.length;
+    function getConfirmedBySigner(bytes32 uuid, address signer) public view returns (bool) {
+        return confirmedBySigner[uuid][signer];
     }
 
-    function getTransactionRequestHistoryState(uint256 _idx) public view returns (bytes32, address, string memory, address, address, uint256, uint256) {
-        TransactionRequestHistory storage history = transactionRequestHistory[_idx];
-        return (history.uuid, history.proposer, history.functionName, history.address1, history.address2, history.number1, history.number2);
+    function getAllConfirmedBy(bytes32 uuid) public view returns (bool[] memory) {
+        TransactionRequest storage request = transactionRequests[uuid];
+        bool[] memory confirmedBy = new bool[](signers.length);
+
+        for (uint256 i = 0; i < signers.length; i++) {
+            confirmedBy[i] = request.confirmedBy[signers[i]];
+        }
+
+        return confirmedBy;
     }
 
     /* ========== Freezable ========== */
