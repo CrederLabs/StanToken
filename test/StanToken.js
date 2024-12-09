@@ -256,7 +256,7 @@ describe("StanToken", function () {
             
             expect(await stanToken.balanceOf(owner.address)).to.equal("999999900000000000000000000");
 
-            await stanToken.cancelSignature(uuid);
+            await stanToken.deleteSignature(uuid);
 
             expect(await stanToken.balanceOf(owner.address)).to.equal("1000000000000000000000000000");
         });

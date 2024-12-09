@@ -151,9 +151,6 @@ contract StanToken is ERC20, Pausable {
         return block.number / BLOCK_INTERVAL;
     }
 
-    function getNonce(uint256 blockNumber) public view returns (uint256) {
-        return blockNumber / BLOCK_INTERVAL;
-    }
 
     /* ========== Signer Threshold ========== */
     function confirmThreshold() internal view returns (uint256) {
@@ -208,7 +205,7 @@ contract StanToken is ERC20, Pausable {
         }
     }
 
-    function cancelSignature(bytes32 uuid) external onlySigner nonReentrantDirect {
+    function deleteSignature(bytes32 uuid) external onlySigner nonReentrantDirect {
         TransactionRequest storage request = transactionRequests[uuid];
         require(request.proposer == msg.sender, "Only proposer can cancel the transaction request.");
         
@@ -234,8 +231,8 @@ contract StanToken is ERC20, Pausable {
         return uuids[_idx];
     }
 
-    function convertUuid(uint256 blockNumber, string memory functionName, address address1, address address2, uint256 number1, uint256 number2) public view returns (bytes32) {
-        return keccak256(abi.encodePacked(getNonce(blockNumber), functionName, address1, address2, number1, number2));
+    function convertUuid(uint256 nonce, string memory functionName, address address1, address address2, uint256 number1, uint256 number2) public view returns (bytes32) {
+        return keccak256(abi.encodePacked(nonce, functionName, address1, address2, number1, number2));
     }
     
     function getTransactionRequestState(bytes32 uuid) public view returns (address, string memory, address, address, uint256, uint256, uint256) {
