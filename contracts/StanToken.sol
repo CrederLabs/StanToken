@@ -540,13 +540,6 @@ contract StanToken is ERC20, Pausable {
         emit RecoverERC20(receiver, tokenAddress, tokenAmount);
     }
 
-    function recoverETH(address receiver, uint256 amount) public onlySigner {
-        if (!confirmSignature("recoverETH", receiver, address(0), amount, 0)) return;
-
-        payable(receiver).transfer(amount);
-
-        emit RecoverETH(receiver, amount);
-    }
 
     /* ========== EVENTS ========== */
     event Frozen(address indexed who);
@@ -559,5 +552,4 @@ contract StanToken is ERC20, Pausable {
     event SignerRemoved(address indexed signer);
     event SetBlockInterval(uint256 blockInterval);
     event RecoverERC20(address indexed receiver, address indexed tokenAddress, uint256 tokenAmount);
-    event RecoverETH(address indexed receiver, uint256 amount);
 }
