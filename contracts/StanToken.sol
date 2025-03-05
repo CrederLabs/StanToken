@@ -2,38 +2,273 @@
 pragma solidity ^0.8.24;
 
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/Pausable.sol";
 
-contract StanToken is ERC20, Ownable, Pausable {
+contract StanToken is ERC20, Pausable {
+    using SafeERC20 for IERC20;
 
-    constructor() Ownable(msg.sender) ERC20("Station Token", "STAN") {
+    // The signer is responsible for authorizing the execution of critical functions of the STAN token.
+    // setBlockInterval, freeze, unfreeze, lock, lockAfter, cancelLock, recoverERC20, recoverETH 등의 함수를 실행하기 위해서는 signers에 등록된 주소로부터 서명을 받아야 한다.
+    address[] public signers;
+
+    /* ========== Transaction Request ========== */
+    struct TransactionRequest {
+        address proposer;
+        string functionName;
+        address address1;
+        address address2;
+        uint256 number1;
+        uint256 number2;
+        uint256 timestamp;
+        mapping (address => bool) confirmedBy;
+    }
+
+    // The data combined from the parameters entered by the user is converted to bytes and used as a UUID.
+    mapping (bytes32 => TransactionRequest) public transactionRequests;
+
+    bytes32[] public uuids;
+
+    mapping (bytes32 => mapping (address => uint256)) tempLockAmount;
+
+    mapping (bytes32 => mapping (address => bool)) public confirmedBySigner;
+
+    constructor() ERC20("Station Token", "STAN") {
         _mint(msg.sender, 1000000000 * 10**uint(decimals()));
+        
+        signers.push(msg.sender);
     }
 
     /* ========== ReentrancyGuard ========== */
     mapping (address => bool) private _locks;
 
-    modifier nonReentrant {
-        require(_locks[msg.sender] != true, "ReentrancyGuard: reentrant call");
+    modifier nonReentrantDirect() {
+        require(msg.sender == tx.origin, "Direct calls only");
+        require(!_locks[msg.sender], "ReentrancyGuard: reentrant call");
 
         _locks[msg.sender] = true;
-
         _;
-    
         _locks[msg.sender] = false;
+    }
+
+    /* ========== Signer ========== */
+    modifier onlySigner() {
+        bool isSigner = false;
+        for (uint256 i = 0; i < signers.length; i++) {
+            if (signers[i] == msg.sender) {
+                isSigner = true;
+                break;
+            }
+        }
+        require(isSigner, "Only signer");
+        _;
+    }
+
+    function addSigner(address _signer) public onlySigner {
+        require(_signer != address(0), "Invalid address");
+        for (uint256 i = 0; i < signers.length; i++) {
+            if (signers[i] == _signer) {
+                require(false, "Already added");
+            }
+        }
+
+        if (!confirmSignature("addSigner", _signer, address(0), 0, 0)) return;
+
+        signers.push(_signer);
+        emit SignerAdded(_signer);
+    }
+
+    // Multiple addresses can be added at once using the `addSigners` function.
+    function addSigners(address[] memory _signers) public onlySigner {
+        require(_signers.length > 0, "Invalid addresses");
+
+        for (uint256 i = 0; i < _signers.length; i++) {
+            require(_signers[i] != address(0), "Invalid address");
+            for (uint256 j = 0; j < signers.length; j++) {
+                require(signers[j] != _signers[i], "Already added");
+            }
+        }
+
+        // Combine `_signers` into a `bytes32` format and then convert it to an `address`.
+        bytes32 signersBytes32 = keccak256(abi.encodePacked(_signers));
+        address signersBytes32ToAddress = address(uint160(uint256(signersBytes32)));
+
+        if (!confirmSignature("addSigner", signersBytes32ToAddress, address(0), 0, 0)) return;
+
+        for (uint256 i = 0; i < _signers.length; i++) {
+            addSigner(_signers[i]);
+            emit SignerAdded(_signers[i]);
+        }
+    }
+
+    function removeSigner(address _signer) public onlySigner {
+        require(signers.length > 1, "Cannot remove the last signer");
+
+        if (!confirmSignature("removeSigner", _signer, address(0), 0, 0)) return;
+        
+        for (uint256 i = 0; i < signers.length; i++) {
+            if (signers[i] == _signer) {
+                signers[i] = signers[signers.length - 1];
+                signers.pop();
+                break;
+            }
+        }
+
+        emit SignerRemoved(_signer);
+    }
+
+    function isSigner(address _signer) public view returns (bool) {
+        for (uint256 i = 0; i < signers.length; i++) {
+            if (signers[i] == _signer) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    function signersLength() public view returns (uint256) {
+        return signers.length;
+    }
+
+    /* ========== Block Interval ========== */
+    // In Avalanche, 1 block is produced every 2 seconds.
+    // The signatures from the signers must be completed within 100,000 blocks to execute.
+    // 100,000 blocks = 55.55 hours (approximately 2.3 days).
+    // Calculate in units of 100,000 by setting the lower 5 digits of `block.number` to zero.
+    uint256 public BLOCK_INTERVAL = 100000;
+
+    function setBlockInterval(uint256 _blockInterval) public onlySigner {
+        require(_blockInterval != 0, "Invalid block interval");
+
+        if (!confirmSignature("setBlockInterval", address(0), address(0), _blockInterval, 0)) return;
+        
+        BLOCK_INTERVAL = _blockInterval;
+
+        emit SetBlockInterval(_blockInterval);
+    }
+
+    function currentNonce() public view returns (uint256) {
+        return block.number / BLOCK_INTERVAL;
+    }
+
+
+    /* ========== Signer Threshold ========== */
+    function confirmThreshold() internal view returns (uint256) {
+        return (signers.length + 1) / 2;
+    }
+
+    /* ========== Signature ========== */
+    function confirmSignature(string memory functionName, address address1, address address2, uint256 number1, uint256 number2) internal returns (bool) {
+        bytes32 uuid = convertUuid(currentNonce(), functionName, address1, address2, number1, number2);
+        TransactionRequest storage request = transactionRequests[uuid];
+
+        if (request.proposer == address(0)) {
+            // The `lock` and `lockAfter` functions allow the proposer to initiate the first transfer of tokens.
+            if (keccak256(abi.encodePacked(functionName)) == keccak256(abi.encodePacked("lock")) || 
+                keccak256(abi.encodePacked(functionName)) == keccak256(abi.encodePacked("lockAfter"))) {
+                require(super.balanceOf(msg.sender) >= number1, "Balance is too small.");
+                transferFrom(msg.sender, address(this), number1);
+                tempLockAmount[uuid][msg.sender] = number1;
+            } else if (keccak256(abi.encodePacked(functionName)) == keccak256(abi.encodePacked("cancelLock"))) {
+                uint256 amount = lockInfo[address1][number1].balance;
+                require(amount > 0, "No locked tokens.");
+                require(super.balanceOf(address(this)) >= amount, "STAN Balance is too small.");
+            }
+
+            request.proposer = msg.sender;
+            request.functionName = functionName;
+            request.address1 = address1;
+            request.address2 = address2;
+            request.number1 = number1;
+            request.number2 = number2;
+            request.timestamp = block.timestamp;
+            
+            uuids.push(uuid);
+        }
+
+        require(!request.confirmedBy[msg.sender], "Already confirmed");
+        request.confirmedBy[msg.sender] = true;
+        confirmedBySigner[uuid][msg.sender] = true;
+        emit SignatureConfirmed(uuid, functionName, address1, address2, number1, number2, msg.sender);
+
+        uint256 confirmedCount = 0;
+        for (uint256 i = 0; i < signers.length; i++) {
+            if (request.confirmedBy[signers[i]]) {
+                confirmedCount++;
+            }
+        }
+
+        if (confirmedCount == confirmThreshold()) {
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    function deleteSignature(bytes32 uuid) external onlySigner nonReentrantDirect {
+        TransactionRequest storage request = transactionRequests[uuid];
+        require(request.proposer == msg.sender, "Only proposer can cancel the transaction request.");
+        
+        if (keccak256(abi.encodePacked(request.functionName)) == keccak256(abi.encodePacked("lock")) || 
+            keccak256(abi.encodePacked(request.functionName)) == keccak256(abi.encodePacked("lockAfter"))) {
+            if (tempLockAmount[uuid][msg.sender] > 0) {
+                IERC20(address(this)).safeTransfer(msg.sender, tempLockAmount[uuid][msg.sender]);
+                delete tempLockAmount[uuid][msg.sender];
+            }
+        }
+
+        delete transactionRequests[uuid];
+    }
+
+    // TransactionRequest storage request = transactionRequests[uuid]; 을 uuid로 조회하는 함수 
+    // function getTransactionRequestState(uuid);
+
+    function getUuidsCount() public view returns (uint256) {
+        return uuids.length;
+    }
+
+    function getUuids(uint256 _idx) public view returns (bytes32) {
+        return uuids[_idx];
+    }
+
+    function convertUuid(uint256 nonce, string memory functionName, address address1, address address2, uint256 number1, uint256 number2) public view returns (bytes32) {
+        return keccak256(abi.encodePacked(nonce, functionName, address1, address2, number1, number2));
+    }
+    
+    function getTransactionRequestState(bytes32 uuid) public view returns (address, string memory, address, address, uint256, uint256, uint256) {
+        TransactionRequest storage request = transactionRequests[uuid];
+        return (request.proposer, request.functionName, request.address1, request.address2, request.number1, request.number2, request.timestamp);
+    }
+
+    function getConfirmedBySigner(bytes32 uuid, address signer) public view returns (bool) {
+        return confirmedBySigner[uuid][signer];
+    }
+
+    function getAllConfirmedBy(bytes32 uuid) public view returns (bool[] memory) {
+        TransactionRequest storage request = transactionRequests[uuid];
+        bool[] memory confirmedBy = new bool[](signers.length);
+
+        for (uint256 i = 0; i < signers.length; i++) {
+            confirmedBy[i] = request.confirmedBy[signers[i]];
+        }
+
+        return confirmedBy;
     }
 
     /* ========== Freezable ========== */
     mapping(address => bool) blacklist;
 
-    function freeze(address who) public onlyOwner {
+    function freeze(address who) public onlySigner {
+        if (!confirmSignature("freeze", who, address(0), 0, 0)) return;
+
         blacklist[who] = true;
         
         emit Frozen(who);
     }
 
-    function unfreeze(address who) public onlyOwner {
+    function unfreeze(address who) public onlySigner {
+        if (!confirmSignature("unfreeze", who, address(0), 0, 0)) return;
+
         blacklist[who] = false;
         
         emit Unfrozen(who);
@@ -43,17 +278,12 @@ contract StanToken is ERC20, Ownable, Pausable {
         return blacklist[who];
     }
 
-    /* ========== ERC20 ========== */
-    function transfer(address sender, address recipient, uint256 amount) internal virtual whenNotPaused returns (bool) {
-        require(!blacklist[sender] && !blacklist[recipient], "The user is frozen");
+    /* ========== Transfer Overrides ========== */
+    // it need to add 'virtual' to ERC20's _transfer function
+    function _transfer(address sender, address recipient, uint256 amount) internal override {
+        require(!paused(), "Token transfer while paused");
+        require(!blacklist[sender] && !blacklist[recipient], "Sender or recipient is frozen");
         super._transfer(sender, recipient, amount);
-        return true;
-    }
-
-    function transferFrom(address sender, address recipient, uint256 amount) public virtual override whenNotPaused returns (bool) {
-        require(!blacklist[sender] && !blacklist[recipient], "The user is frozen");
-        super.transferFrom(sender, recipient, amount);
-        return true;
     }
 
     /* ========== Vesting ========== */
@@ -110,8 +340,15 @@ contract StanToken is ERC20, Ownable, Pausable {
     }
 
     // Check if there is any locked information for `msg.sender`. If there is and the `releaseTime` has passed, transfer the amount to `msg.sender`.
-    function release(address _holder) external whenNotPaused nonReentrant {
-        require(_holder == msg.sender || msg.sender == owner(), "Only the holder can release the lock.");
+    function release(address _holder) external whenNotPaused nonReentrantDirect {
+        bool isSigner = false;
+        for (uint256 i = 0; i < signers.length; i++) {
+            if (signers[i] == msg.sender) {
+                isSigner = true;
+                break;
+            }
+        }
+        require(_holder == msg.sender || isSigner, "Only the holder or signer can release the lock.");
         require(!blacklist[_holder], "The user is frozen");
         require(lockInfo[_holder].length > 0, "No lock information.");
 
@@ -243,21 +480,20 @@ contract StanToken is ERC20, Ownable, Pausable {
     //     1. The owner transfers a specified amount of STAN tokens they hold to the STAN contract.
     //     2. Add lock information, including the user address, the amount, and the `releaseTime`.
     // When the `releaseTime` is reached, the user can claim the STAN tokens based on the lock information.
-    function lock(address _to, uint256 _amount, uint256 _releaseTime) public onlyOwner {
-        require(super.balanceOf(msg.sender) >= _amount, "Balance is too small.");
+    function lock(address _to, uint256 _amount, uint256 _releaseTime) public onlySigner {
         require(_releaseTime > block.timestamp, "Release time should be in the future");
+
+        if (!confirmSignature("lock", _to, address(0), _amount, _releaseTime)) return;
         
-        transferFrom(msg.sender, address(this), _amount);
         lockInfo[_to].push(
             LockInfo(_releaseTime, _amount)
         );
         emit Lock(_to, _amount, _releaseTime);
     }
 
-    function lockAfter(address _to, uint256 _amount, uint256 _afterTime) public onlyOwner {
-        require(super.balanceOf(msg.sender) >= _amount, "Balance is too small.");
+    function lockAfter(address _to, uint256 _amount, uint256 _afterTime) public onlySigner {
+        if (!confirmSignature("lockAfter", _to, address(0), _amount, _afterTime)) return;
 
-        transferFrom(msg.sender, address(this), _amount);
         lockInfo[_to].push(
             LockInfo(block.timestamp + _afterTime, _amount)
         );
@@ -267,17 +503,21 @@ contract StanToken is ERC20, Ownable, Pausable {
     // For the unlock function:
     //     1. Unlock the locked information.
     //     2. Transfer the STAN tokens back to the owner. (This is used when the vesting is canceled.)
-    function cancelLock(address _holder, uint256 i) public onlyOwner {
+    function cancelLock(address _holder, uint256 i, address _receiver) public onlySigner nonReentrantDirect {
         require(i < lockInfo[_holder].length, "No lock information.");
+        require(_receiver != address(0), "Invalid address");
+
+        
+
+        if (!confirmSignature("cancelLock", _holder, _receiver, i, 0)) return;
 
         uint256 amount = lockInfo[_holder][i].balance;
-
-        require(super.balanceOf(address(this)) >= amount, "STAN Balance is too small.");
-
         lockInfo[_holder][i].balance = 0;
 
+        cancelHistory[_holder].push(CancelHistory(block.timestamp, amount));
+
         // The canceled amount is transferred back to the owner (since it has already been transferred to this contract).
-        _transfer(address(this), msg.sender, amount);
+        _transfer(address(this), _receiver, amount);
 
         emit CancelLock(_holder, amount);
     }
@@ -292,13 +532,14 @@ contract StanToken is ERC20, Ownable, Pausable {
     }
 
     /* ========== Recovery ========== */
-    function recoverERC20(address tokenAddress, uint256 tokenAmount) public onlyOwner {
-        IERC20(tokenAddress).transfer(owner(), tokenAmount);
+    function recoverERC20(address receiver, address tokenAddress, uint256 tokenAmount) public onlySigner {
+        if (!confirmSignature("recoverERC20", receiver, tokenAddress, tokenAmount, 0)) return;
+
+        IERC20(tokenAddress).safeTransfer(receiver, tokenAmount);
+
+        emit RecoverERC20(receiver, tokenAddress, tokenAmount);
     }
 
-    function recoverETH(uint256 amount) public onlyOwner {
-        payable(owner()).transfer(amount);
-    }
 
     /* ========== EVENTS ========== */
     event Frozen(address indexed who);
@@ -306,4 +547,9 @@ contract StanToken is ERC20, Ownable, Pausable {
     event Lock(address indexed holder, uint256 value, uint256 releaseTime);
     event CancelLock(address indexed holder, uint256 value);
     event Claim(address indexed holder, uint256 value);
+    event SignatureConfirmed(bytes32 uuid, string functionName, address address1, address address2, uint256 number1, uint256 number2, address indexed signer);
+    event SignerAdded(address indexed signer);
+    event SignerRemoved(address indexed signer);
+    event SetBlockInterval(uint256 blockInterval);
+    event RecoverERC20(address indexed receiver, address indexed tokenAddress, uint256 tokenAmount);
 }
